@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package fontes_widget_viewer;
+
+option java_multiple_files = true;
+option java_package = "com.fontes.widget_viewer";
+
+service PreviewService {
+  rpc WatchFrames(WatchRequest) returns (stream Frame);
+  rpc GetStatus(Empty) returns (Status);
+}
+
+message Empty {}
+
+message WatchRequest {}
+
+message Frame {
+  bytes rgba_data = 1;
+  int32 width = 2;
+  int32 height = 3;
+  double device_pixel_ratio = 4;
+  int64 timestamp_ms = 5;
+  string test_name = 6;
+}
+
+message Status {
+  bool is_running = 1;
+  string test_name = 2;
+  int32 frame_count = 3;
+  string server_uri = 4;
+}

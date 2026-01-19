@@ -1,0 +1,21 @@
+name: preview_binding
+description: Flutter test binding for fontes_widget_viewer that captures frames
+version: 0.1.0
+
+environment:
+  sdk: ^3.0.0
+  flutter: ">=3.19.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_test:
+    sdk: flutter
+  preview_core:
+    path: ../preview_core
+  fixnum: ^1.1.0
+  clock: ^1.1.1
+  stack_trace: ^1.11.0
+
+dev_dependencies:
+  flutter_lints: ^5.0.0
