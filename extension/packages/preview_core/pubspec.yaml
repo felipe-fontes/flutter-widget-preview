@@ -1,0 +1,15 @@
+name: preview_core
+description: Core gRPC definitions and utilities for fontes_widget_viewer
+version: 0.1.0
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  grpc: ^5.1.0
+  protobuf: ^6.0.0
+  fixnum: ^1.1.0
+
+dev_dependencies:
+  test: ^1.25.0
+  lints: ^5.0.0
