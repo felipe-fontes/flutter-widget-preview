@@ -20,12 +20,39 @@ const _fontsPath = String.fromEnvironment(
   defaultValue: '',
 );
 
+/// Preview width in logical pixels, passed via --dart-define
+const _previewWidth = int.fromEnvironment(
+  'PREVIEW_WIDTH',
+  defaultValue: 0,
+);
+
+/// Preview height in logical pixels, passed via --dart-define
+const _previewHeight = int.fromEnvironment(
+  'PREVIEW_HEIGHT',
+  defaultValue: 0,
+);
+
+/// Device pixel ratio for preview, passed via --dart-define
+/// Using String because double.fromEnvironment doesn't exist
+const _previewDprString = String.fromEnvironment(
+  'PREVIEW_DEVICE_PIXEL_RATIO',
+  defaultValue: '0',
+);
+
+/// Parsed device pixel ratio
+double get _previewDevicePixelRatio {
+  final value = double.tryParse(_previewDprString);
+  return value ?? 0.0;
+}
+
 class PreviewTestBinding extends TestWidgetsFlutterBinding
     implements LiveTestWidgetsFlutterBinding {
   PreviewTestBinding() {
     debugPrint = debugPrintOverride;
     // Automatically load fonts when binding is created
     _initializeFonts();
+    // Apply resolution settings from dart-defines
+    _initializeResolution();
   }
 
   @override
@@ -67,6 +94,28 @@ class PreviewTestBinding extends TestWidgetsFlutterBinding
   static PreviewTestBinding ensureInitialized() {
     if (_instance != null) return _instance!;
     return _instance ??= PreviewTestBinding();
+  }
+
+  /// Initializes the preview resolution from dart-defines.
+  void _initializeResolution() {
+    if (_previewWidth > 0 && _previewHeight > 0) {
+      final dpr = _previewDevicePixelRatio > 0 ? _previewDevicePixelRatio : 1.0;
+
+      // Calculate physical size (logical × dpr)
+      final physicalWidth = _previewWidth * dpr;
+      final physicalHeight = _previewHeight * dpr;
+
+      debugPrint(
+          'Setting preview resolution: ${_previewWidth}×$_previewHeight logical, '
+          '${physicalWidth.toInt()}×${physicalHeight.toInt()} physical @${dpr}x');
+
+      // Apply to the implicit view (main view)
+      final view = platformDispatcher.implicitView;
+      if (view != null) {
+        view.physicalSize = ui.Size(physicalWidth, physicalHeight);
+        view.devicePixelRatio = dpr;
+      }
+    }
   }
 
   /// Automatically loads fonts during binding initialization.

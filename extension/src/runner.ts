@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { spawn, ChildProcess, execSync } from 'child_process';
+import { DeviceResolution } from './resolutions';
 
 export class PreviewRunner {
     private testProcess: ChildProcess | undefined;
@@ -115,7 +116,7 @@ export class PreviewRunner {
         return undefined;
     }
 
-    async startTest(testFile: string, testName: string): Promise<number | undefined> {
+    async startTest(testFile: string, testName: string, resolution: DeviceResolution): Promise<number | undefined> {
         this.stop();
 
         // Find the Flutter project root (where pubspec.yaml is)
@@ -129,10 +130,15 @@ export class PreviewRunner {
         // Inject the flutter_test_config.dart
         await this.injectTestConfig(testDir, projectRoot);
 
+        // Calculate physical dimensions for the test
+        const physicalWidth = Math.round(resolution.width * resolution.devicePixelRatio);
+        const physicalHeight = Math.round(resolution.height * resolution.devicePixelRatio);
+
         this.outputChannel.appendLine(`Running test: ${testName}`);
         this.outputChannel.appendLine(`File: ${testFile}`);
         this.outputChannel.appendLine(`CWD: ${projectRoot}`);
         this.outputChannel.appendLine(`Fonts path: ${this.fontsPath}`);
+        this.outputChannel.appendLine(`Resolution: ${resolution.name} - ${resolution.width}×${resolution.height} logical, ${physicalWidth}×${physicalHeight} physical @${resolution.devicePixelRatio}x`);
 
         return new Promise((resolve, reject) => {
             const args = [
@@ -141,6 +147,9 @@ export class PreviewRunner {
                 '--name', `"${testName}"`,
                 '--dart-define=ENABLE_PREVIEW=true',
                 `--dart-define=PREVIEW_FONTS_PATH=${this.fontsPath}`,
+                `--dart-define=PREVIEW_WIDTH=${resolution.width}`,
+                `--dart-define=PREVIEW_HEIGHT=${resolution.height}`,
+                `--dart-define=PREVIEW_DEVICE_PIXEL_RATIO=${resolution.devicePixelRatio}`,
             ];
 
             this.outputChannel.appendLine(`Command: flutter ${args.join(' ')}`);

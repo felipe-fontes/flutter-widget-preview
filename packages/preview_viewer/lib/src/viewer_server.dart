@@ -40,7 +40,8 @@ class ViewerServer {
   }
 
   Future<Response> _handleWebSocket(Request request) async {
-    final handler = webSocketHandler((WebSocketChannel channel, String? protocol) {
+    final handler =
+        webSocketHandler((WebSocketChannel channel, String? protocol) {
       _relay.addBrowserConnection(channel);
     });
     return await handler(request);
@@ -60,21 +61,25 @@ class ViewerServer {
   <title>Flutter Widget Preview</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
     body {
       background: #1a1a2e;
-      min-height: 100vh;
       display: flex;
       flex-direction: column;
-      align-items: center;
-      justify-content: center;
       font-family: 'SF Mono', 'Fira Code', monospace;
       color: #eee;
     }
-    .container {
+    .header {
       display: flex;
-      flex-direction: column;
       align-items: center;
-      gap: 16px;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: rgba(0, 0, 0, 0.3);
+      flex-shrink: 0;
     }
     h1 {
       font-size: 14px;
@@ -86,7 +91,7 @@ class ViewerServer {
     #status {
       font-size: 12px;
       color: #4ade80;
-      padding: 8px 16px;
+      padding: 6px 12px;
       background: rgba(74, 222, 128, 0.1);
       border-radius: 4px;
     }
@@ -94,31 +99,59 @@ class ViewerServer {
       color: #f87171;
       background: rgba(248, 113, 113, 0.1);
     }
+    .canvas-wrapper {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      min-height: 0;
+      overflow: hidden;
+    }
     .canvas-container {
       background: #16213e;
       border-radius: 12px;
       padding: 16px;
       box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      max-width: 100%;
+      max-height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     #preview {
       display: block;
       border-radius: 8px;
       background: #0f0f23;
+      max-width: 100%;
+      max-height: calc(100vh - 120px);
+      object-fit: contain;
+    }
+    .footer {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 16px;
+      background: rgba(0, 0, 0, 0.3);
+      flex-shrink: 0;
     }
     .info {
       font-size: 11px;
       color: #666;
-      margin-top: 8px;
     }
   </style>
 </head>
 <body>
-  <div class="container">
+  <div class="header">
     <h1>Widget Preview</h1>
     <div id="status" class="disconnected">Connecting...</div>
+  </div>
+  <div class="canvas-wrapper">
     <div class="canvas-container">
-      <canvas id="preview" width="400" height="800"></canvas>
+      <canvas id="preview"></canvas>
     </div>
+  </div>
+  <div class="footer">
     <div class="info">
       <span id="dimensions">--</span> |
       <span id="fps">-- fps</span>
@@ -131,10 +164,12 @@ class ViewerServer {
     const status = document.getElementById('status');
     const dimensions = document.getElementById('dimensions');
     const fpsDisplay = document.getElementById('fps');
+    const canvasWrapper = document.querySelector('.canvas-wrapper');
 
     let frameCount = 0;
     let lastFpsUpdate = Date.now();
     let pendingMetadata = null;
+    let currentMeta = null;
 
     function connect() {
       const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -168,20 +203,35 @@ class ViewerServer {
 
     function renderFrame(meta, rgbaData) {
       const { width, height, devicePixelRatio } = meta;
+      currentMeta = meta;
       
+      // Set canvas internal dimensions to match the frame
       if (canvas.width !== width || canvas.height !== height) {
         canvas.width = width;
         canvas.height = height;
-        const displayWidth = width / devicePixelRatio;
-        const displayHeight = height / devicePixelRatio;
-        canvas.style.width = displayWidth + 'px';
-        canvas.style.height = displayHeight + 'px';
       }
+
+      // Calculate logical size
+      const logicalWidth = width / devicePixelRatio;
+      const logicalHeight = height / devicePixelRatio;
+      
+      // Get available space (accounting for padding)
+      const availableWidth = canvasWrapper.clientWidth - 64;  // 16px padding on each side + 16px container padding
+      const availableHeight = canvasWrapper.clientHeight - 64;
+      
+      // Calculate scale to fit while maintaining aspect ratio
+      const scaleX = availableWidth / logicalWidth;
+      const scaleY = availableHeight / logicalHeight;
+      const scale = Math.min(scaleX, scaleY, 1);  // Don't upscale beyond 1:1
+      
+      // Apply scaled display size
+      canvas.style.width = Math.round(logicalWidth * scale) + 'px';
+      canvas.style.height = Math.round(logicalHeight * scale) + 'px';
 
       const imageData = new ImageData(rgbaData, width, height);
       ctx.putImageData(imageData, 0, 0);
 
-      dimensions.textContent = Math.round(width/devicePixelRatio) + 'x' + Math.round(height/devicePixelRatio);
+      dimensions.textContent = Math.round(logicalWidth) + 'x' + Math.round(logicalHeight) + ' @' + devicePixelRatio + 'x';
       
       frameCount++;
       const now = Date.now();
@@ -191,6 +241,26 @@ class ViewerServer {
         lastFpsUpdate = now;
       }
     }
+
+    // Handle window resize
+    window.addEventListener('resize', () => {
+      if (currentMeta) {
+        // Re-calculate display size on resize
+        const { width, height, devicePixelRatio } = currentMeta;
+        const logicalWidth = width / devicePixelRatio;
+        const logicalHeight = height / devicePixelRatio;
+        
+        const availableWidth = canvasWrapper.clientWidth - 64;
+        const availableHeight = canvasWrapper.clientHeight - 64;
+        
+        const scaleX = availableWidth / logicalWidth;
+        const scaleY = availableHeight / logicalHeight;
+        const scale = Math.min(scaleX, scaleY, 1);
+        
+        canvas.style.width = Math.round(logicalWidth * scale) + 'px';
+        canvas.style.height = Math.round(logicalHeight * scale) + 'px';
+      }
+    });
 
     connect();
   </script>

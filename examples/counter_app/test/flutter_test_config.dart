@@ -14,8 +14,10 @@ PreviewTestBinding? _binding;
 /// It allows us to set up the preview binding.
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // Only enable preview when ENABLE_PREVIEW dart-define is true
-  const enablePreview =
-      bool.fromEnvironment('ENABLE_PREVIEW', defaultValue: false);
+  const enablePreview = bool.fromEnvironment(
+    'ENABLE_PREVIEW',
+    defaultValue: false,
+  );
 
   if (enablePreview) {
     _previewEnabled = true;

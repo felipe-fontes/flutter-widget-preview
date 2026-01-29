@@ -67,21 +67,25 @@ export class PreviewPanel {
     <title>Widget Preview</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body {
+            height: 100%;
+            overflow: hidden;
+        }
         body {
             background: #1e1e1e;
-            min-height: 100vh;
+            height: 100%;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            padding: 16px;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             color: #ccc;
         }
         .header {
             display: flex;
             align-items: center;
+            justify-content: center;
             gap: 12px;
-            margin-bottom: 16px;
+            padding: 12px;
+            flex-shrink: 0;
         }
         h1 {
             font-size: 14px;
@@ -106,24 +110,32 @@ export class PreviewPanel {
             color: #facc15;
         }
         .canvas-container {
-            background: #252526;
-            border-radius: 8px;
-            padding: 12px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-            max-width: 100%;
-            overflow: auto;
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            min-height: 0;
+            overflow: hidden;
         }
         #preview {
             display: block;
-            border-radius: 4px;
-            background: #1a1a1a;
+            border-radius: 8px;
+            background: #252526;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
         }
         .info {
-            margin-top: 12px;
+            padding: 12px;
             font-size: 11px;
             color: #666;
             display: flex;
+            justify-content: center;
             gap: 16px;
+            flex-shrink: 0;
+            border-top: 1px solid #333;
         }
     </style>
 </head>
@@ -146,18 +158,63 @@ export class PreviewPanel {
         const status = document.getElementById('status');
         const dimensions = document.getElementById('dimensions');
         const fpsDisplay = document.getElementById('fps');
+        const container = document.querySelector('.canvas-container');
 
         let frameCount = 0;
         let lastFpsUpdate = Date.now();
         let pendingMetadata = null;
         let reconnectTimeout = null;
+        let currentLogicalWidth = 0;
+        let currentLogicalHeight = 0;
 
         // Debug logging that shows in webview
         const log = (msg) => {
             console.log('[Preview]', msg);
-            // Also show in dimensions for debugging
-            // dimensions.textContent = msg;
         };
+
+        function updateCanvasSize(width, height, devicePixelRatio) {
+            // Store logical dimensions
+            currentLogicalWidth = Math.round(width / devicePixelRatio);
+            currentLogicalHeight = Math.round(height / devicePixelRatio);
+            
+            // Set canvas internal resolution (physical pixels)
+            if (canvas.width !== width || canvas.height !== height) {
+                canvas.width = width;
+                canvas.height = height;
+            }
+            
+            // Calculate the max display size that fits in the container
+            const containerRect = container.getBoundingClientRect();
+            const containerWidth = containerRect.width - 32; // padding
+            const containerHeight = containerRect.height - 32; // padding
+            
+            // Use logical dimensions as base for display
+            const logicalWidth = currentLogicalWidth;
+            const logicalHeight = currentLogicalHeight;
+            
+            // Calculate scale to fit in container
+            const scaleX = containerWidth / logicalWidth;
+            const scaleY = containerHeight / logicalHeight;
+            const scale = Math.min(scaleX, scaleY, 1); // Don't scale up beyond 1x
+            
+            // Apply display size (CSS pixels)
+            const displayWidth = Math.round(logicalWidth * scale);
+            const displayHeight = Math.round(logicalHeight * scale);
+            
+            canvas.style.width = displayWidth + 'px';
+            canvas.style.height = displayHeight + 'px';
+            
+            log('Display size: ' + displayWidth + 'x' + displayHeight + ' (scale: ' + scale.toFixed(2) + ')');
+        }
+
+        // Handle container resize
+        const resizeObserver = new ResizeObserver(() => {
+            if (currentLogicalWidth > 0 && currentLogicalHeight > 0) {
+                const dpr = canvas.width / currentLogicalWidth;
+                updateCanvasSize(canvas.width, canvas.height, dpr);
+            }
+        });
+        resizeObserver.observe(container);
 
         function connect() {
             log('Connecting to ws://localhost:${port}/ws...');
@@ -201,22 +258,15 @@ export class PreviewPanel {
         }
 
         function renderFrame(meta, rgbaData) {
-            log('Rendering: ' + meta.width + 'x' + meta.height);
+            log('Rendering: ' + meta.width + 'x' + meta.height + ' @' + meta.devicePixelRatio + 'x');
             const { width, height, devicePixelRatio } = meta;
             
-            if (canvas.width !== width || canvas.height !== height) {
-                canvas.width = width;
-                canvas.height = height;
-                const displayWidth = width / devicePixelRatio;
-                const displayHeight = height / devicePixelRatio;
-                canvas.style.width = displayWidth + 'px';
-                canvas.style.height = displayHeight + 'px';
-            }
+            updateCanvasSize(width, height, devicePixelRatio);
 
             const imageData = new ImageData(rgbaData, width, height);
             ctx.putImageData(imageData, 0, 0);
 
-            dimensions.textContent = Math.round(width/devicePixelRatio) + 'x' + Math.round(height/devicePixelRatio);
+            dimensions.textContent = currentLogicalWidth + '×' + currentLogicalHeight + ' @' + devicePixelRatio + 'x';
             
             frameCount++;
             const now = Date.now();

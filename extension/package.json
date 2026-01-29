@@ -27,6 +27,11 @@
         "command": "fontesWidgetViewer.stopPreview",
         "title": "Stop Widget Preview",
         "category": "Flutter"
+      },
+      {
+        "command": "fontesWidgetViewer.selectResolution",
+        "title": "Select Preview Resolution",
+        "category": "Flutter"
       }
     ],
     "configuration": {
