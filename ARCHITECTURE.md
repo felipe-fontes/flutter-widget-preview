@@ -33,6 +33,10 @@ const testWidgetsPattern = /testWidgets\s*\(\s*['"]([^'"]+)['"]/g;
 
 Clicking the button triggers the `fontesWidgetViewer.previewTest` command with the file path and test name.
 
+### 1.5. Device Resolution Selection
+
+Users can select a target device via Command Palette (`Cmd+Shift+P` → "Fontes: Select Preview Resolution"). Presets include iOS (iPhone 15 Pro, iPad Pro), Android (Pixel 8, Galaxy S24), and Desktop (1080p, 1440p). The selected resolution is stored in workspace state.
+
 ### 2. Extension Injects Test Configuration
 
 The extension's `PreviewRunner` does several things before running the test:
@@ -104,6 +108,9 @@ spawn('flutter', [
     '--name', `"${testName}"`,
     '--dart-define=ENABLE_PREVIEW=true',           // Activates preview mode
     `--dart-define=PREVIEW_FONTS_PATH=${fontsPath}`, // For font loading
+    `--dart-define=PREVIEW_WIDTH=${resolution.width}`,  // Logical width
+    `--dart-define=PREVIEW_HEIGHT=${resolution.height}`, // Logical height
+    `--dart-define=PREVIEW_DEVICE_PIXEL_RATIO=${resolution.devicePixelRatio}`, // DPR
 ], { cwd: projectRoot });
 ```
 
@@ -125,9 +132,10 @@ When the test process starts with `ENABLE_PREVIEW=true`:
 
 1. `flutter_test_config.dart` is executed
 2. `PreviewTestBinding.ensureInitialized()` replaces Flutter's default binding
-3. The binding starts a gRPC server on a dynamic port
-4. The binding prints `GRPC_SERVER_STARTED:<port>` to stdout
-5. The binding waits for a client to connect before running tests
+3. **Resolution is applied** from dart-defines (if specified)
+4. The binding starts a gRPC server on a dynamic port
+5. The binding prints `GRPC_SERVER_STARTED:<port>` to stdout
+6. The binding waits for a client to connect before running tests
 
 ```dart
 class PreviewTestBinding extends TestWidgetsFlutterBinding {
@@ -146,6 +154,8 @@ class PreviewTestBinding extends TestWidgetsFlutterBinding {
   }
 }
 ```
+
+The binding reads `PREVIEW_WIDTH`, `PREVIEW_HEIGHT`, and `PREVIEW_DEVICE_PIXEL_RATIO` from dart-defines and applies them to `platformDispatcher.implicitView.physicalSize` and `devicePixelRatio`.
 
 ### 5. Frame Capture (On-Pump-Only)
 
@@ -333,6 +343,7 @@ fontes_widget_viewer/
 │   ├── src/
 │   │   ├── extension.ts     # Extension entry point, registers commands
 │   │   ├── codelens.ts      # "▶ Preview" CodeLens provider
+│   │   ├── resolutions.ts   # Device resolution presets (iOS, Android, Desktop)
 │   │   ├── runner.ts        # Orchestrates test & viewer processes
 │   │   └── webview.ts       # VS Code webview panel for preview
 │   ├── templates/
@@ -355,13 +366,15 @@ fontes_widget_viewer/
 |------|---------|
 | [extension/src/extension.ts](extension/src/extension.ts) | Extension entry point, registers commands |
 | [extension/src/codelens.ts](extension/src/codelens.ts) | "▶ Preview" button on tests |
+| [extension/src/resolutions.ts](extension/src/resolutions.ts) | Device resolution presets & selection |
 | [extension/src/runner.ts](extension/src/runner.ts) | Orchestrates test execution & process spawning |
 | [extension/src/webview.ts](extension/src/webview.ts) | VS Code preview panel with WebSocket client |
 | [extension/templates/flutter_test_config.dart](extension/templates/flutter_test_config.dart) | Test config template (injected) |
-| [packages/preview_binding/lib/src/preview_test_binding.dart](packages/preview_binding/lib/src/preview_test_binding.dart) | Custom test binding with frame capture |
+| [packages/preview_binding/lib/src/preview_test_binding.dart](packages/preview_binding/lib/src/preview_test_binding.dart) | Custom test binding with frame capture & resolution |
 | [packages/preview_core/lib/src/grpc_server.dart](packages/preview_core/lib/src/grpc_server.dart) | gRPC frame server |
 | [packages/preview_core/lib/src/grpc_client.dart](packages/preview_core/lib/src/grpc_client.dart) | gRPC frame client |
 | [packages/preview_viewer/lib/src/frame_relay.dart](packages/preview_viewer/lib/src/frame_relay.dart) | gRPC→WebSocket relay with caching |
+| [packages/preview_viewer/lib/src/viewer_server.dart](packages/preview_viewer/lib/src/viewer_server.dart) | HTTP server with responsive preview HTML |
 | [packages/preview_viewer/bin/preview_viewer.dart](packages/preview_viewer/bin/preview_viewer.dart) | Viewer server entry point |
 
 ## Build & Package
@@ -420,3 +433,12 @@ code --install-extension fontes-widget-viewer-0.0.1.vsix
 - Allows replacing the default test binding
 - Works with any Flutter project without code changes
 - Can be enabled/disabled via dart-define flag
+
+### Why resolution via dart-defines?
+- No code changes required in user's tests
+- Resolution is set before any test code runs
+- Device pixel ratio enables high-DPI rendering
+
+### Why fit image to available space?
+- Aspect ratio preservation prevents distortion
+- Scale-down only (no upscaling) maintains image quality
