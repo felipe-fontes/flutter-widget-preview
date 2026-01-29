@@ -1,0 +1,26 @@
+# Dart/Flutter
+.dart_tool/
+.packages
+build/
+pubspec.lock
+.metadata
+
+# Flutter generated files
+**/Generated*.java
+**/GeneratedPluginRegistrant.*
+**/generated_plugin_registrant.*
+**/generated_plugins.cmake
+ios/Flutter/ephemeral/
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+macos/Flutter/ephemeral/
+macos/Flutter/GeneratedPluginRegistrant.swift
+android/local.properties
+linux/flutter/
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+*.iml

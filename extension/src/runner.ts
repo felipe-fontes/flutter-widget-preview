@@ -1,0 +1,314 @@
+import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
+import { spawn, ChildProcess, execSync } from 'child_process';
+
+export class PreviewRunner {
+    private testProcess: ChildProcess | undefined;
+    private viewerProcess: ChildProcess | undefined;
+    private readonly fontsPath: string;
+    private readonly templatesPath: string;
+    private injectedConfigPath: string | undefined;
+
+    constructor(
+        private readonly extensionPath: string,
+        private readonly outputChannel: vscode.OutputChannel
+    ) {
+        this.fontsPath = path.join(extensionPath, 'fonts');
+        this.templatesPath = path.join(extensionPath, 'templates');
+    }
+
+    private async injectTestConfig(testDir: string, projectRoot: string): Promise<void> {
+        const configPath = path.join(testDir, 'flutter_test_config.dart');
+
+        // Check if config already exists
+        if (fs.existsSync(configPath)) {
+            const content = fs.readFileSync(configPath, 'utf-8');
+            if (!content.includes('Fontes Widget Viewer')) {
+                // User has their own config - we can't inject
+                this.outputChannel.appendLine('Warning: flutter_test_config.dart already exists. Preview may not work.');
+                return;
+            }
+        }
+
+        // Copy our template
+        const templatePath = path.join(this.templatesPath, 'flutter_test_config.dart');
+        if (fs.existsSync(templatePath)) {
+            fs.copyFileSync(templatePath, configPath);
+            this.injectedConfigPath = configPath;
+            this.outputChannel.appendLine(`Injected flutter_test_config.dart into ${testDir}`);
+        }
+
+        // Ensure preview_binding is available - add as path dependency
+        await this.ensurePreviewBindingDependency(projectRoot);
+    }
+
+    private async ensurePreviewBindingDependency(projectRoot: string): Promise<void> {
+        const pubspecPath = path.join(projectRoot, 'pubspec.yaml');
+        if (!fs.existsSync(pubspecPath)) return;
+
+        const content = fs.readFileSync(pubspecPath, 'utf-8');
+
+        if (content.includes('preview_binding:')) {
+            this.outputChannel.appendLine('preview_binding already in pubspec.yaml');
+            return;
+        }
+
+        // Find the preview_binding package path (inside the extension folder)
+        const previewBindingPath = path.join(this.extensionPath, 'packages', 'preview_binding');
+        const absolutePath = path.resolve(previewBindingPath);
+
+        if (!fs.existsSync(absolutePath)) {
+            this.outputChannel.appendLine(`Warning: preview_binding not found at ${absolutePath}`);
+            return;
+        }
+
+        // Add preview_binding as a dev dependency
+        const devDepsMatch = content.match(/dev_dependencies:\s*\n/);
+        if (devDepsMatch) {
+            const insertPos = devDepsMatch.index! + devDepsMatch[0].length;
+            const newContent = content.slice(0, insertPos) +
+                `  preview_binding:\n    path: ${absolutePath}\n` +
+                content.slice(insertPos);
+            fs.writeFileSync(pubspecPath, newContent);
+            this.outputChannel.appendLine(`Added preview_binding to dev_dependencies`);
+        } else {
+            // No dev_dependencies section - add it
+            const newContent = content + `\ndev_dependencies:\n  preview_binding:\n    path: ${absolutePath}\n`;
+            fs.writeFileSync(pubspecPath, newContent);
+            this.outputChannel.appendLine(`Added dev_dependencies with preview_binding`);
+        }
+
+        // Run flutter pub get
+        this.outputChannel.appendLine('Running flutter pub get...');
+        try {
+            execSync('flutter pub get', { cwd: projectRoot, stdio: 'pipe' });
+            this.outputChannel.appendLine('flutter pub get completed');
+        } catch (e) {
+            this.outputChannel.appendLine(`flutter pub get failed: ${e}`);
+        }
+    }
+
+    private cleanupInjectedConfig(): void {
+        if (this.injectedConfigPath && fs.existsSync(this.injectedConfigPath)) {
+            // Don't delete - user might want to inspect it
+            // fs.unlinkSync(this.injectedConfigPath);
+            this.injectedConfigPath = undefined;
+        }
+    }
+
+    /**
+     * Find the Flutter project root by looking for pubspec.yaml
+     * starting from the test file and walking up the directory tree.
+     */
+    private findProjectRoot(testFile: string): string | undefined {
+        let dir = path.dirname(testFile);
+        const root = path.parse(dir).root;
+
+        while (dir !== root) {
+            const pubspecPath = path.join(dir, 'pubspec.yaml');
+            if (fs.existsSync(pubspecPath)) {
+                return dir;
+            }
+            dir = path.dirname(dir);
+        }
+        return undefined;
+    }
+
+    async startTest(testFile: string, testName: string): Promise<number | undefined> {
+        this.stop();
+
+        // Find the Flutter project root (where pubspec.yaml is)
+        const projectRoot = this.findProjectRoot(testFile);
+        if (!projectRoot) {
+            throw new Error('No Flutter project found (pubspec.yaml not found)');
+        }
+
+        const testDir = path.dirname(testFile);
+
+        // Inject the flutter_test_config.dart
+        await this.injectTestConfig(testDir, projectRoot);
+
+        this.outputChannel.appendLine(`Running test: ${testName}`);
+        this.outputChannel.appendLine(`File: ${testFile}`);
+        this.outputChannel.appendLine(`CWD: ${projectRoot}`);
+        this.outputChannel.appendLine(`Fonts path: ${this.fontsPath}`);
+
+        return new Promise((resolve, reject) => {
+            const args = [
+                'test',
+                testFile,
+                '--name', `"${testName}"`,
+                '--dart-define=ENABLE_PREVIEW=true',
+                `--dart-define=PREVIEW_FONTS_PATH=${this.fontsPath}`,
+            ];
+
+            this.outputChannel.appendLine(`Command: flutter ${args.join(' ')}`);
+
+            this.testProcess = spawn('flutter', args, {
+                cwd: projectRoot,
+                shell: true,
+                env: { ...process.env },
+            });
+
+            let grpcPort: number | undefined;
+            let resolved = false;
+
+            this.testProcess.stdout?.on('data', (data: Buffer) => {
+                const output = data.toString();
+                this.outputChannel.append(output);
+
+                // Look for gRPC server port announcement
+                const portMatch = output.match(/GRPC_SERVER_STARTED:(\d+)/);
+                if (portMatch && !resolved) {
+                    grpcPort = parseInt(portMatch[1], 10);
+                    this.outputChannel.appendLine(`\ngRPC server started on port ${grpcPort}`);
+                    resolved = true;
+                    resolve(grpcPort);
+                }
+
+                // Alternative format
+                const previewMatch = output.match(/PREVIEW_SERVER_STARTED:grpc:\/\/localhost:(\d+)/);
+                if (previewMatch && !resolved) {
+                    grpcPort = parseInt(previewMatch[1], 10);
+                    this.outputChannel.appendLine(`\nPreview server started on port ${grpcPort}`);
+                    resolved = true;
+                    resolve(grpcPort);
+                }
+            });
+
+            this.testProcess.stderr?.on('data', (data: Buffer) => {
+                this.outputChannel.append(data.toString());
+            });
+
+            this.testProcess.on('error', (error: Error) => {
+                this.outputChannel.appendLine(`Test process error: ${error.message}`);
+                if (!resolved) {
+                    resolved = true;
+                    reject(error);
+                }
+            });
+
+            this.testProcess.on('close', (code: number | null) => {
+                this.outputChannel.appendLine(`Test process exited with code ${code}`);
+                if (!resolved) {
+                    resolved = true;
+                    if (code === 0) {
+                        resolve(undefined);
+                    } else {
+                        reject(new Error(`Test process exited with code ${code}`));
+                    }
+                }
+            });
+
+            // Timeout after 30 seconds
+            setTimeout(() => {
+                if (!resolved) {
+                    resolved = true;
+                    reject(new Error('Timeout waiting for gRPC server to start (30s)'));
+                }
+            }, 30000);
+        });
+    }
+
+    async startViewer(grpcPort: number, webPort: number): Promise<void> {
+        if (this.viewerProcess) {
+            this.viewerProcess.kill('SIGKILL');
+            this.viewerProcess = undefined;
+        }
+
+        // Kill any stale processes that might be using our port
+        await this.killProcessOnPort(webPort);
+
+        // The viewer package is inside the extension folder
+        const viewerPackagePath = path.join(this.extensionPath, 'packages', 'preview_viewer');
+
+        this.outputChannel.appendLine(`Starting viewer...`);
+        this.outputChannel.appendLine(`  Viewer path: ${viewerPackagePath}`);
+        this.outputChannel.appendLine(`  gRPC port: ${grpcPort}`);
+        this.outputChannel.appendLine(`  Web port: ${webPort}`);
+
+        this.viewerProcess = spawn(
+            'dart',
+            [
+                'run',
+                'bin/preview_viewer.dart',
+                '--grpc-port', grpcPort.toString(),
+                '--web-port', webPort.toString(),
+            ],
+            {
+                cwd: viewerPackagePath,
+                shell: true,
+                env: { ...process.env },
+            }
+        );
+
+        this.viewerProcess.stdout?.on('data', (data: Buffer) => {
+            this.outputChannel.append(`[viewer] ${data.toString()}`);
+        });
+
+        this.viewerProcess.stderr?.on('data', (data: Buffer) => {
+            this.outputChannel.append(`[viewer] ${data.toString()}`);
+        });
+
+        this.viewerProcess.on('error', (error: Error) => {
+            this.outputChannel.appendLine(`Viewer error: ${error.message}`);
+        });
+
+        // Wait a bit for the server to start
+        await new Promise<void>((resolve) => setTimeout(resolve, 3000));
+    }
+
+    stop(): void {
+        if (this.testProcess) {
+            this.testProcess.kill('SIGKILL');
+            this.testProcess = undefined;
+            this.outputChannel.appendLine('Test process stopped');
+        }
+
+        if (this.viewerProcess) {
+            this.viewerProcess.kill('SIGKILL');
+            this.viewerProcess = undefined;
+            this.outputChannel.appendLine('Viewer process stopped');
+        }
+    }
+
+    /**
+     * Kill any processes using a specific port.
+     * This is a fallback when our tracked processes don't match what's actually running.
+     */
+    async killProcessOnPort(port: number): Promise<void> {
+        return new Promise((resolve) => {
+            // Use lsof to find processes on the port and kill them
+            const findProcess = spawn('lsof', ['-ti', `:${port}`], { shell: true });
+
+            let pids = '';
+            findProcess.stdout?.on('data', (data: Buffer) => {
+                pids += data.toString();
+            });
+
+            findProcess.on('close', () => {
+                const pidList = pids.trim().split('\n').filter(p => p);
+                if (pidList.length > 0) {
+                    this.outputChannel.appendLine(`Found processes on port ${port}: ${pidList.join(', ')}`);
+                    for (const pid of pidList) {
+                        try {
+                            process.kill(parseInt(pid, 10), 'SIGKILL');
+                            this.outputChannel.appendLine(`Killed process ${pid}`);
+                        } catch (e) {
+                            // Process might already be dead
+                        }
+                    }
+                    // Give time for port to be released
+                    setTimeout(resolve, 500);
+                } else {
+                    resolve();
+                }
+            });
+
+            findProcess.on('error', () => {
+                resolve(); // Ignore errors from lsof not being available
+            });
+        });
+    }
+}

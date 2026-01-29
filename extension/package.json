@@ -1,0 +1,60 @@
+{
+  "name": "fontes-widget-viewer",
+  "displayName": "Fontes Widget Viewer",
+  "description": "Visualize Flutter widget rendering in real-time during tests",
+  "version": "0.0.1",
+  "publisher": "fontes",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Testing",
+    "Debuggers",
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:dart"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "fontesWidgetViewer.previewTest",
+        "title": "Preview Widget Test",
+        "category": "Flutter"
+      },
+      {
+        "command": "fontesWidgetViewer.stopPreview",
+        "title": "Stop Widget Preview",
+        "category": "Flutter"
+      }
+    ],
+    "configuration": {
+      "title": "Fontes Widget Viewer",
+      "properties": {
+        "fontesWidgetViewer.webPort": {
+          "type": "number",
+          "default": 9090,
+          "description": "Port for the preview web server"
+        },
+        "fontesWidgetViewer.openInBrowser": {
+          "type": "boolean",
+          "default": false,
+          "description": "Open preview in external browser instead of VSCode webview"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "sync-packages": "rm -rf packages && mkdir -p packages && cp -r ../packages/preview_binding ../packages/preview_core ../packages/preview_viewer packages/ && rm -rf packages/*/.dart_tool packages/*/build",
+    "vscode:prepublish": "npm run sync-packages && npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "npm run sync-packages && npm run compile && npx @vscode/vsce package --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.74.0",
+    "typescript": "^5.0.0"
+  }
+}

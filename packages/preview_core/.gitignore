@@ -1,0 +1,19 @@
+# Dart/Flutter
+.dart_tool/
+.packages
+build/
+pubspec.lock
+
+# Generated files
+*.g.dart
+*.pb.dart
+*.pbenum.dart
+*.pbgrpc.dart
+*.pbjson.dart
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+*.iml

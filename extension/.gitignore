@@ -1,0 +1,12 @@
+# Build output
+out/
+*.vsix
+
+# Synced packages (auto-generated from ../packages/)
+packages/
+
+# TypeScript
+*.tsbuildinfo
+
+# macOS
+.DS_Store

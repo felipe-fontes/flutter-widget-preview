@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:clock/clock.dart';
@@ -13,30 +12,110 @@ import 'package:preview_core/preview_core.dart';
 import 'package:stack_trace/stack_trace.dart' as stack_trace;
 
 import 'preview_platform_dispatcher.dart';
+import 'font_loader.dart';
 
-const _enablePreview = bool.fromEnvironment(
-  'ENABLE_PREVIEW',
-  defaultValue: false,
+/// Path to the extension's fonts folder, passed via --dart-define
+const _fontsPath = String.fromEnvironment(
+  'PREVIEW_FONTS_PATH',
+  defaultValue: '',
 );
 
 class PreviewTestBinding extends TestWidgetsFlutterBinding
     implements LiveTestWidgetsFlutterBinding {
   PreviewTestBinding() {
     debugPrint = debugPrintOverride;
+    // Automatically load fonts when binding is created
+    _initializeFonts();
+  }
+
+  @override
+  void initInstances() {
+    super.initInstances();
+    _instance = this;
   }
 
   late final _grpcServer = PreviewGrpcServer();
   bool _serverStarted = false;
+  bool _fontsLoaded = false;
+  Completer<void>? _fontsCompleter;
+  int _framesSent = 0;
+
+  /// Completer that resolves when the process should exit.
+  /// Used to keep the process alive until frames are delivered.
+  static Completer<void>? _exitCompleter;
+
+  /// Call this to wait before exiting the process.
+  /// Should be called from flutter_test_config after tests complete.
+  static Future<void> waitBeforeExit() async {
+    if (_exitCompleter != null && !_exitCompleter!.isCompleted) {
+      await _exitCompleter!.future;
+    }
+  }
+
+  /// Signals that the process can exit now.
+  static void signalReadyToExit() {
+    if (_exitCompleter != null && !_exitCompleter!.isCompleted) {
+      _exitCompleter!.complete();
+      print('PREVIEW_READY_TO_EXIT');
+    }
+  }
 
   static PreviewTestBinding get instance =>
       BindingBase.checkInstance(_instance);
   static PreviewTestBinding? _instance;
 
   static PreviewTestBinding ensureInitialized() {
+    if (_instance != null) return _instance!;
     return _instance ??= PreviewTestBinding();
   }
 
+  /// Automatically loads fonts during binding initialization.
+  void _initializeFonts() {
+    if (_fontsPath.isNotEmpty && !_fontsLoaded) {
+      _fontsCompleter = Completer<void>();
+      _loadFontsAsync();
+    }
+  }
+
+  Future<void> _loadFontsAsync() async {
+    try {
+      debugPrint('Loading preview fonts from: $_fontsPath');
+      await loadPreviewFonts(_fontsPath);
+      _fontsLoaded = true;
+      debugPrint('Preview fonts loaded successfully');
+    } catch (e) {
+      debugPrint('Failed to load fonts: $e');
+    } finally {
+      _fontsCompleter?.complete();
+    }
+  }
+
+  /// Waits for fonts to finish loading. Called automatically before tests run.
+  Future<void> waitForFonts() async {
+    await _fontsCompleter?.future;
+  }
+
+  /// Loads fonts for proper rendering. Usually not needed - fonts load automatically.
+  ///
+  /// [fontsPath] is optional - if not provided, uses PREVIEW_FONTS_PATH dart-define.
+  Future<void> loadFonts([String? fontsPath]) async {
+    if (_fontsLoaded) return;
+
+    final path = fontsPath ?? _fontsPath;
+    if (path.isNotEmpty) {
+      debugPrint('Loading preview fonts from: $path');
+      await loadPreviewFonts(path);
+      _fontsLoaded = true;
+      debugPrint('Preview fonts loaded successfully');
+    } else {
+      debugPrint('No fonts path provided - fonts will not be loaded');
+    }
+  }
+
   Future<String> startServer({int port = 0}) async {
+    // Ensure fonts are loaded before starting server
+    await waitForFonts();
+
     if (_serverStarted) {
       return 'grpc://localhost:${_grpcServer.hashCode}';
     }
@@ -48,6 +127,20 @@ class PreviewTestBinding extends TestWidgetsFlutterBinding
     print('PREVIEW_SERVER_STARTED:$uri');
     return uri;
   }
+
+  /// Waits for a viewer client to connect to the gRPC server.
+  /// This should be called after [startServer] and before running tests.
+  Future<void> waitForViewerConnection({Duration? timeout}) async {
+    if (!_serverStarted) {
+      throw StateError('Server not started. Call startServer() first.');
+    }
+    print('PREVIEW_WAITING_FOR_VIEWER');
+    await _grpcServer.waitForClientConnection(timeout: timeout);
+    print('PREVIEW_VIEWER_CONNECTED');
+  }
+
+  /// Returns true if a viewer client is connected.
+  bool get hasViewerConnected => _grpcServer.hasClientConnected;
 
   Future<void> stopServer() async {
     if (_serverStarted) {
@@ -76,7 +169,8 @@ class PreviewTestBinding extends TestWidgetsFlutterBinding
       final height = physicalSize.height.toInt();
 
       final image = scene.toImageSync(width, height);
-      final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      final byteData =
+          await image.toByteData(format: ui.ImageByteFormat.rawRgba);
       image.dispose();
 
       if (byteData == null) return;
@@ -107,11 +201,8 @@ class PreviewTestBinding extends TestWidgetsFlutterBinding
     if (framePolicy == LiveTestWidgetsFlutterBindingFramePolicy.benchmark) {
       return;
     }
-
-    addPostFrameCallback((_) {
-      _captureCurrentFrame();
-    });
-
+    // Don't capture on every frame - only capture when pump() is called
+    // This prevents excessive frame capture at 60fps
     super.scheduleFrame();
   }
 
@@ -119,14 +210,15 @@ class PreviewTestBinding extends TestWidgetsFlutterBinding
     if (!_serverStarted) return;
 
     try {
-      final ro =
-          WidgetsBinding.instance.rootElement?.renderObject as RenderView?;
-      if (ro == null) return;
+      // In newer Flutter versions, we need to get the RenderView from the binding
+      // rather than casting from rootElement.renderObject
+      final renderView = renderViews.firstOrNull;
+      if (renderView == null) return;
 
-      final layer = ro.debugLayer as OffsetLayer?;
+      final layer = renderView.debugLayer as OffsetLayer?;
       if (layer == null) return;
 
-      final logicalSize = ro.size;
+      final logicalSize = renderView.size;
       final devicePixelRatio =
           platformDispatcher.implicitView?.devicePixelRatio ?? 2.0;
 
@@ -136,8 +228,8 @@ class PreviewTestBinding extends TestWidgetsFlutterBinding
       );
 
       _sendFrame(image, logicalSize, devicePixelRatio);
-    } catch (e) {
-      debugPrint('Error in _captureCurrentFrame: $e');
+    } catch (e, st) {
+      debugPrint('Error in _captureCurrentFrame: $e\n$st');
     }
   }
 
@@ -147,7 +239,8 @@ class PreviewTestBinding extends TestWidgetsFlutterBinding
     double devicePixelRatio,
   ) async {
     try {
-      final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      final byteData =
+          await image.toByteData(format: ui.ImageByteFormat.rawRgba);
       image.dispose();
 
       if (byteData == null) return;
@@ -161,11 +254,15 @@ class PreviewTestBinding extends TestWidgetsFlutterBinding
         ..testName = _currentTestName ?? '';
 
       _grpcServer.pushFrame(frame);
+      _framesSent++;
       print('FRAME_CAPTURED:${frame.width}x${frame.height}');
     } catch (e) {
       debugPrint('Error sending frame: $e');
     }
   }
+
+  /// Returns the number of frames sent during this test session.
+  int get framesSent => _framesSent;
 
   @override
   bool get inTest => _inTest;
@@ -184,9 +281,11 @@ class PreviewTestBinding extends TestWidgetsFlutterBinding
   @override
   Timeout get defaultTestTimeout => Timeout.none;
 
+  // Use fadePointers instead of fullyLive to prevent continuous frame scheduling
+  // We only want frames when pump() is called, not at 60fps continuously
   @override
   LiveTestWidgetsFlutterBindingFramePolicy framePolicy =
-      LiveTestWidgetsFlutterBindingFramePolicy.fullyLive;
+      LiveTestWidgetsFlutterBindingFramePolicy.fadePointers;
 
   Completer<void>? _pendingFrame;
   bool _expectingFrame = false;
@@ -243,13 +342,13 @@ class PreviewTestBinding extends TestWidgetsFlutterBinding
     _expectingFrameToReassemble = false;
     if (_expectingFrame) {
       assert(_pendingFrame != null);
+      // Capture frame ONLY when pump() was called (expectingFrame is true)
+      _captureCurrentFrame();
       _pendingFrame!.complete();
       _pendingFrame = null;
       _expectingFrame = false;
-    } else if (framePolicy !=
-        LiveTestWidgetsFlutterBindingFramePolicy.benchmark) {
-      platformDispatcher.scheduleFrame();
     }
+    // Don't continuously schedule frames - only when pump() is called
   }
 
   @override
@@ -313,8 +412,7 @@ class PreviewTestBinding extends TestWidgetsFlutterBinding
     Future<void> Function() testBody,
     VoidCallback invariantTester, {
     String description = '',
-    @Deprecated('This parameter has no effect.')
-    Duration? timeout,
+    @Deprecated('This parameter has no effect.') Duration? timeout,
   }) {
     assert(!inTest);
     _inTest = true;

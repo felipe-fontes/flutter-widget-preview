@@ -1,0 +1,24 @@
+# Dart/Flutter
+.dart_tool/
+.packages
+build/
+*.iml
+.idea/
+.metadata
+pubspec.lock
+
+# macOS
+.DS_Store
+
+# VS Code
+.vscode/
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# Extension build artifacts
+extension/packages/
+extension/out/
+extension/*.vsix
+
+# Test artifacts
+coverage/

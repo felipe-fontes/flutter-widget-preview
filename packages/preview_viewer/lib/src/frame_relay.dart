@@ -4,42 +4,107 @@ import 'dart:convert';
 import 'package:preview_core/preview_core.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
+/// Relays frames from a gRPC test connection to browser WebSocket connections.
+///
+/// Key feature: Caches ALL frames so they can be replayed to browsers that
+/// connect after the test has finished. This is essential because the browser
+/// often connects after the test completes.
 class FrameRelay {
   final PreviewGrpcClient _grpcClient = PreviewGrpcClient();
   final List<WebSocketChannel> _browserConnections = [];
   StreamSubscription<Frame>? _frameSubscription;
 
-  Future<void> connectToTest(String host, int port) async {
-    await _grpcClient.connect(host, port);
-    print('RELAY_CONNECTED_TO_TEST:$host:$port');
+  /// Cache of ALL frames received during the test session.
+  /// Unlike a ring buffer, this keeps everything so late-connecting browsers
+  /// can see the entire test run.
+  final List<Frame> _frameCache = [];
 
-    _frameSubscription = _grpcClient.watchFrames().listen(
-      _handleFrame,
+  /// Whether the gRPC stream has ended (test finished)
+  bool _streamEnded = false;
+
+  /// Number of frames received
+  int get frameCount => _frameCache.length;
+
+  /// Whether frames are available for replay
+  bool get hasFrames => _frameCache.isNotEmpty;
+
+  Future<void> connectToTest(String host, int port) async {
+    // Clear any previous session data
+    _frameCache.clear();
+    _streamEnded = false;
+
+    await _grpcClient.connect(host, port);
+    print('Connected to test gRPC server at $host:$port');
+
+    final stream = _grpcClient.watchFrames();
+
+    _frameSubscription = stream.listen(
+      (frame) {
+        print(
+            'Frame received: ${frame.width}x${frame.height} (total: ${_frameCache.length + 1})');
+        _handleFrame(frame);
+      },
       onError: (error) {
-        print('RELAY_ERROR:$error');
+        print('gRPC stream error (test may have ended): $error');
+        _streamEnded = true;
+        // Don't clear the cache! Browsers can still connect and see the frames.
       },
       onDone: () {
-        print('RELAY_STREAM_CLOSED');
+        print(
+            'gRPC stream closed. ${_frameCache.length} frames cached for replay.');
+        _streamEnded = true;
       },
     );
   }
 
   void addBrowserConnection(WebSocketChannel channel) {
     _browserConnections.add(channel);
-    print('BROWSER_CONNECTED:${_browserConnections.length} total');
+    print('Browser connected (${_browserConnections.length} total)');
+
+    // Send ALL cached frames to the newly connected browser
+    if (_frameCache.isNotEmpty) {
+      print('Replaying ${_frameCache.length} cached frames to new browser');
+      for (final frame in _frameCache) {
+        _sendFrameToBrowser(channel, frame);
+      }
+
+      if (_streamEnded) {
+        // Let the browser know the test has finished
+        _sendTestComplete(channel);
+      }
+    } else if (_streamEnded) {
+      print('Browser connected but no frames were captured');
+      _sendNoFrames(channel);
+    } else {
+      print('Browser connected, waiting for frames...');
+    }
 
     channel.stream.listen(
-      (message) {},
+      (message) {
+        // Handle any messages from browser if needed
+      },
       onDone: () {
         _browserConnections.remove(channel);
-        print('BROWSER_DISCONNECTED:${_browserConnections.length} remaining');
+        print('Browser disconnected (${_browserConnections.length} remaining)');
+      },
+      onError: (e) {
+        _browserConnections.remove(channel);
+        print('Browser connection error: $e');
       },
     );
   }
 
   void _handleFrame(Frame frame) {
-    print('RELAY_FRAME:${frame.width}x${frame.height}');
+    // Cache the frame (keep all frames, no limit)
+    _frameCache.add(frame);
 
+    // Send to all currently connected browsers
+    for (final connection in _browserConnections) {
+      _sendFrameToBrowser(connection, frame);
+    }
+  }
+
+  void _sendFrameToBrowser(WebSocketChannel connection, Frame frame) {
     final metadata = jsonEncode({
       'type': 'frame',
       'width': frame.width,
@@ -48,24 +113,54 @@ class FrameRelay {
       'testName': frame.testName,
     });
 
-    for (final connection in _browserConnections) {
-      try {
-        connection.sink.add(metadata);
-        connection.sink.add(frame.rgbaData);
-      } catch (e) {
-        print('RELAY_SEND_ERROR:$e');
-      }
+    try {
+      connection.sink.add(metadata);
+      connection.sink.add(frame.rgbaData);
+    } catch (e) {
+      print('Error sending frame to browser: $e');
     }
+  }
+
+  void _sendTestComplete(WebSocketChannel connection) {
+    try {
+      connection.sink.add(jsonEncode({
+        'type': 'testComplete',
+        'totalFrames': _frameCache.length,
+      }));
+    } catch (e) {
+      print('Error sending test complete: $e');
+    }
+  }
+
+  void _sendNoFrames(WebSocketChannel connection) {
+    try {
+      connection.sink.add(jsonEncode({
+        'type': 'noFrames',
+        'message': 'Test completed but no frames were captured',
+      }));
+    } catch (e) {
+      print('Error sending no frames message: $e');
+    }
+  }
+
+  /// Clears the frame cache. Call this when starting a new test session.
+  void clearCache() {
+    _frameCache.clear();
+    _streamEnded = false;
+    print('Frame cache cleared');
   }
 
   Future<void> disconnect() async {
     await _frameSubscription?.cancel();
     await _grpcClient.disconnect();
+
+    // Close browser connections but DON'T clear the frame cache
+    // so we can still serve frames if browsers reconnect
     final connections = List.of(_browserConnections);
     _browserConnections.clear();
     for (final connection in connections) {
       await connection.sink.close();
     }
-    print('RELAY_DISCONNECTED');
+    print('Relay disconnected (${_frameCache.length} frames still cached)');
   }
 }

@@ -18,21 +18,18 @@ class PreviewGrpcClient {
       ),
     );
     _stub = PreviewServiceClient(_channel!);
-    print('GRPC_CLIENT_CONNECTED:$host:$port');
   }
 
   Future<void> disconnect() async {
     await _channel?.shutdown();
     _channel = null;
     _stub = null;
-    print('GRPC_CLIENT_DISCONNECTED');
   }
 
   Stream<Frame> watchFrames() {
     if (_stub == null) {
       throw StateError('Client not connected. Call connect() first.');
     }
-    print('GRPC_CLIENT_WATCHING_FRAMES');
     return _stub!.watchFrames(WatchRequest());
   }
 
