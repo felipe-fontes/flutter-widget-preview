@@ -188,7 +188,7 @@ export function registerMcpServer(context: vscode.ExtensionContext): void {
                 const provider = new FlutterPreviewMcpProvider(context.extensionPath);
                 context.subscriptions.push(
                     lmApi.registerMcpServerDefinitionProvider(
-                        'fontes-widget-viewer.flutter-preview',
+                        'flutter-preview.mcp-server',
                         provider
                     )
                 );

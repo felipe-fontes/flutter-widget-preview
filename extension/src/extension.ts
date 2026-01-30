@@ -16,12 +16,12 @@ let previewRunner: PreviewRunner | undefined;
 let currentResolution: DeviceResolution = getDefaultResolution();
 
 /** Key for storing resolution in workspace state */
-const RESOLUTION_STATE_KEY = 'fontesWidgetViewer.selectedResolution';
+const RESOLUTION_STATE_KEY = 'flutterPreview.selectedResolution';
 
 export function activate(context: vscode.ExtensionContext): void {
-    console.log('Fontes Widget Viewer activating...');
+    console.log('Flutter Widget Preview activating...');
 
-    const outputChannel = vscode.window.createOutputChannel('Fontes Widget Viewer');
+    const outputChannel = vscode.window.createOutputChannel('Flutter Widget Preview');
     context.subscriptions.push(outputChannel);
 
     // Register MCP server provider for AI assistants
@@ -144,7 +144,7 @@ export function activate(context: vscode.ExtensionContext): void {
         })
     );
 
-    console.log('Fontes Widget Viewer activated');
+    console.log('Flutter Widget Preview activated');
 }
 
 export function deactivate(): void {

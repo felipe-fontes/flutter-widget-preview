@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 
 export class PreviewPanel {
     public static currentPanel: PreviewPanel | undefined;
-    public static readonly viewType = 'fontesWidgetViewer.preview';
+    public static readonly viewType = 'flutterPreview.preview';
 
     private readonly _panel: vscode.WebviewPanel;
     private _port: number;
