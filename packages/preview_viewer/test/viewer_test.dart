@@ -29,7 +29,8 @@ void main() {
 
       ws.stream.listen((data) {
         if (data is String) {
-          receivedMetadata.add(jsonDecode(data));
+          final meta = jsonDecode(data) as Map<String, dynamic>;
+          receivedMetadata.add(meta);
           print('METADATA_RECEIVED:${receivedMetadata.length}');
         } else if (data is List<int>) {
           receivedFrames.add(data);
@@ -50,15 +51,30 @@ void main() {
 
       await Future.delayed(const Duration(milliseconds: 500));
 
-      expect(receivedMetadata.length, 1, reason: 'Should receive 1 metadata');
-      expect(receivedMetadata[0]['width'], 400);
-      expect(receivedMetadata[0]['height'], 300);
-      expect(receivedMetadata[0]['devicePixelRatio'], 2.0);
-      print('METADATA_VERIFIED:${receivedMetadata[0]}');
+      // Filter out the "ready" signal frame (0x0 dimensions)
+      final actualFrameMetadata = receivedMetadata
+          .where((m) => m['width'] != 0 && m['height'] != 0)
+          .toList();
+      final readySignals = receivedMetadata
+          .where((m) => m['width'] == 0 && m['height'] == 0)
+          .toList();
 
-      expect(receivedFrames.length, 1, reason: 'Should receive 1 frame');
-      expect(receivedFrames[0].length, 400 * 300 * 4);
-      print('FRAME_SIZE_VERIFIED:${receivedFrames[0].length}');
+      print('READY_SIGNALS:${readySignals.length}');
+      print('ACTUAL_FRAMES:${actualFrameMetadata.length}');
+
+      expect(actualFrameMetadata.length, 1,
+          reason: 'Should receive 1 actual frame');
+      expect(actualFrameMetadata[0]['width'], 400);
+      expect(actualFrameMetadata[0]['height'], 300);
+      expect(actualFrameMetadata[0]['devicePixelRatio'], 2.0);
+      print('METADATA_VERIFIED:${actualFrameMetadata[0]}');
+
+      // Filter actual frame data (non-empty)
+      final actualFrameData =
+          receivedFrames.where((f) => f.isNotEmpty).toList();
+      expect(actualFrameData.length, 1, reason: 'Should receive 1 frame');
+      expect(actualFrameData[0].length, 400 * 300 * 4);
+      print('FRAME_SIZE_VERIFIED:${actualFrameData[0].length}');
 
       await ws.sink.close();
       await relay.disconnect();

@@ -94,8 +94,8 @@ class FrameRelay {
     // Send ALL cached frames to the newly connected browser
     if (_frameCache.isNotEmpty) {
       print('Replaying ${_frameCache.length} cached frames to new browser');
-      for (final frame in _frameCache) {
-        _sendFrameToBrowser(channel, frame);
+      for (var i = 0; i < _frameCache.length; i++) {
+        _sendFrameToBrowser(channel, _frameCache[i], index: i);
       }
 
       if (_streamEnded) {
@@ -134,12 +134,16 @@ class FrameRelay {
     }
   }
 
-  void _sendFrameToBrowser(WebSocketChannel connection, Frame frame) {
+  void _sendFrameToBrowser(WebSocketChannel connection, Frame frame,
+      {int? index}) {
+    final frameIndex = index ?? _frameCache.indexOf(frame);
     final metadata = jsonEncode({
       'type': 'frame',
+      'index': frameIndex,
       'width': frame.width,
       'height': frame.height,
       'devicePixelRatio': frame.devicePixelRatio,
+      'timestampMs': frame.timestampMs.toInt(),
       'testName': frame.testName,
     });
 
@@ -152,10 +156,31 @@ class FrameRelay {
   }
 
   void _sendTestComplete(WebSocketChannel connection) {
+    // Calculate total duration from first to last frame
+    int totalDurationMs = 0;
+    int firstTimestampMs = 0;
+    if (_frameCache.length >= 2) {
+      firstTimestampMs = _frameCache.first.timestampMs.toInt();
+      totalDurationMs = _frameCache.last.timestampMs.toInt() - firstTimestampMs;
+    }
+
+    // Build frame timeline data (relative timestamps)
+    final frameTimeline = _frameCache.asMap().entries.map((e) {
+      final relativeMs = _frameCache.isNotEmpty
+          ? e.value.timestampMs.toInt() - firstTimestampMs
+          : 0;
+      return {
+        'index': e.key,
+        'relativeMs': relativeMs,
+      };
+    }).toList();
+
     try {
       connection.sink.add(jsonEncode({
         'type': 'testComplete',
         'totalFrames': _frameCache.length,
+        'totalDurationMs': totalDurationMs,
+        'frameTimeline': frameTimeline,
       }));
     } catch (e) {
       print('Error sending test complete: $e');

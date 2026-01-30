@@ -80,12 +80,12 @@ export class PreviewPanel {
             overflow: hidden;
         }
         body {
-            background: #1e1e1e;
+            background: var(--vscode-editor-background, #1e1e1e);
             height: 100%;
             display: flex;
             flex-direction: column;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            color: #ccc;
+            font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+            color: var(--vscode-foreground, #ccc);
         }
         .header {
             display: flex;
@@ -98,7 +98,7 @@ export class PreviewPanel {
         h1 {
             font-size: 14px;
             font-weight: 500;
-            color: #888;
+            color: var(--vscode-descriptionForeground, #888);
             text-transform: uppercase;
             letter-spacing: 2px;
         }
@@ -125,25 +125,204 @@ export class PreviewPanel {
             padding: 16px;
             min-height: 0;
             overflow: hidden;
+            position: relative;
         }
         #preview {
             display: block;
             border-radius: 8px;
-            background: #252526;
+            background: var(--vscode-editor-background, #252526);
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
             max-width: 100%;
             max-height: 100%;
             object-fit: contain;
         }
-        .info {
-            padding: 12px;
+        
+        /* Waiting state */
+        .waiting-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: var(--vscode-descriptionForeground, #666);
+            font-size: 14px;
+            text-align: center;
+        }
+        .waiting-message .spinner {
+            width: 24px;
+            height: 24px;
+            border: 2px solid rgba(255,255,255,0.1);
+            border-top-color: var(--vscode-focusBorder, #4f46e5);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 12px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        /* Playback Controls */
+        .playback-container {
+            padding: 12px 16px;
+            background: var(--vscode-sideBar-background, rgba(0, 0, 0, 0.3));
+            flex-shrink: 0;
+            border-top: 1px solid var(--vscode-panel-border, #333);
+        }
+        .playback-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .playback-btn {
+            background: var(--vscode-button-secondaryBackground, rgba(255, 255, 255, 0.1));
+            border: none;
+            color: var(--vscode-button-secondaryForeground, #ccc);
+            width: 28px;
+            height: 28px;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            transition: all 0.15s ease;
+        }
+        .playback-btn:hover {
+            background: var(--vscode-button-secondaryHoverBackground, rgba(255, 255, 255, 0.2));
+        }
+        .playback-btn:active {
+            transform: scale(0.95);
+        }
+        .playback-btn.play-pause {
+            width: 32px;
+            height: 32px;
+            background: var(--vscode-button-background, #4f46e5);
+            color: var(--vscode-button-foreground, #fff);
+        }
+        .playback-btn.play-pause:hover {
+            background: var(--vscode-button-hoverBackground, #6366f1);
+        }
+        .speed-select {
+            background: var(--vscode-dropdown-background, rgba(255, 255, 255, 0.1));
+            border: 1px solid var(--vscode-dropdown-border, transparent);
+            color: var(--vscode-dropdown-foreground, #ccc);
+            padding: 4px 8px;
+            border-radius: 4px;
             font-size: 11px;
-            color: #666;
+            cursor: pointer;
+        }
+        .time-display {
+            font-size: 11px;
+            color: var(--vscode-descriptionForeground, #888);
+            min-width: 120px;
+            text-align: right;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+        }
+        .frame-counter {
+            font-size: 11px;
+            color: var(--vscode-descriptionForeground, #666);
+            margin-left: auto;
+        }
+        
+        /* Timeline Track */
+        .timeline-container {
+            position: relative;
+            height: 20px;
+            display: flex;
+            align-items: center;
+        }
+        .timeline-track {
+            position: relative;
+            flex: 1;
+            height: 4px;
+            background: var(--vscode-scrollbarSlider-background, rgba(255, 255, 255, 0.1));
+            border-radius: 2px;
+            cursor: pointer;
+        }
+        .timeline-progress {
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            background: var(--vscode-focusBorder, #4f46e5);
+            border-radius: 2px;
+            pointer-events: none;
+        }
+        .timeline-playhead {
+            position: absolute;
+            top: 50%;
+            width: 12px;
+            height: 12px;
+            background: #fff;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        /* Frame Markers */
+        .frame-markers {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            height: 16px;
+            pointer-events: none;
+        }
+        .frame-marker {
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.25);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            top: 50%;
+            transition: all 0.15s ease;
+            pointer-events: auto;
+            cursor: pointer;
+        }
+        .frame-marker:hover {
+            background: rgba(255, 255, 255, 0.5);
+            transform: translate(-50%, -50%) scale(1.3);
+        }
+        .frame-marker.current {
+            background: #fff;
+            transform: translate(-50%, -50%) scale(1.3);
+            box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+        }
+        
+        /* Tooltip */
+        .marker-tooltip {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--vscode-editorWidget-background, rgba(0, 0, 0, 0.9));
+            color: var(--vscode-editorWidget-foreground, #fff);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s ease;
+            margin-bottom: 6px;
+        }
+        .frame-marker:hover .marker-tooltip {
+            opacity: 1;
+        }
+        
+        .info {
+            padding: 8px 16px;
+            font-size: 11px;
+            color: var(--vscode-descriptionForeground, #666);
             display: flex;
             justify-content: center;
             gap: 16px;
             flex-shrink: 0;
-            border-top: 1px solid #333;
+            border-top: 1px solid var(--vscode-panel-border, #333);
         }
     </style>
 </head>
@@ -154,7 +333,38 @@ export class PreviewPanel {
     </div>
     <div class="canvas-container">
         <canvas id="preview" width="400" height="800"></canvas>
+        <div id="waitingMessage" class="waiting-message">
+            <div class="spinner"></div>
+            Waiting for frames...
+        </div>
     </div>
+    
+    <div class="playback-container">
+        <div class="playback-controls">
+            <button id="skipStart" class="playback-btn" title="Skip to start (Home)">⏮</button>
+            <button id="prevFrame" class="playback-btn" title="Previous frame (←)">◀</button>
+            <button id="playPause" class="playback-btn play-pause" title="Play/Pause (Space)">▶</button>
+            <button id="nextFrame" class="playback-btn" title="Next frame (→)">▶</button>
+            <button id="skipEnd" class="playback-btn" title="Skip to end (End)">⏭</button>
+            <select id="speedSelect" class="speed-select" title="Playback speed">
+                <option value="0.25">0.25x</option>
+                <option value="0.5">0.5x</option>
+                <option value="1" selected>1x</option>
+                <option value="2">2x</option>
+                <option value="4">4x</option>
+            </select>
+            <div id="timeDisplay" class="time-display">00:00.000 / 00:00.000</div>
+            <div id="frameCounter" class="frame-counter">Frame 0/0</div>
+        </div>
+        <div class="timeline-container">
+            <div id="timeline" class="timeline-track">
+                <div id="timelineProgress" class="timeline-progress"></div>
+                <div id="frameMarkers" class="frame-markers"></div>
+                <div id="playhead" class="timeline-playhead"></div>
+            </div>
+        </div>
+    </div>
+    
     <div class="info">
         <span id="dimensions">--</span>
         <span id="fps">-- fps</span>
@@ -167,55 +377,77 @@ export class PreviewPanel {
         const dimensions = document.getElementById('dimensions');
         const fpsDisplay = document.getElementById('fps');
         const container = document.querySelector('.canvas-container');
+        const waitingMessage = document.getElementById('waitingMessage');
+        
+        // Playback elements
+        const playPauseBtn = document.getElementById('playPause');
+        const skipStartBtn = document.getElementById('skipStart');
+        const skipEndBtn = document.getElementById('skipEnd');
+        const prevFrameBtn = document.getElementById('prevFrame');
+        const nextFrameBtn = document.getElementById('nextFrame');
+        const speedSelect = document.getElementById('speedSelect');
+        const timeDisplay = document.getElementById('timeDisplay');
+        const frameCounter = document.getElementById('frameCounter');
+        const timeline = document.getElementById('timeline');
+        const timelineProgress = document.getElementById('timelineProgress');
+        const playhead = document.getElementById('playhead');
+        const frameMarkersContainer = document.getElementById('frameMarkers');
 
-        let frameCount = 0;
-        let lastFpsUpdate = Date.now();
+        // State
+        let frameHistory = [];
+        let currentFrameIndex = 0;
+        let isPlaying = false;
+        let playbackFinished = false;
+        let playbackSpeed = 1;
+        let playbackStartTime = null;
+        let playbackStartPosition = 0;
+        let totalDurationMs = 0;
+        let testComplete = false;
+        let animationFrameId = null;
         let pendingMetadata = null;
         let reconnectTimeout = null;
         let currentLogicalWidth = 0;
         let currentLogicalHeight = 0;
+        let frameCount = 0;
+        let lastFpsUpdate = Date.now();
 
-        // Debug logging that shows in webview
-        const log = (msg) => {
-            console.log('[Preview]', msg);
-        };
+        const MIN_DURATION_MS = 500;
+        const DEFAULT_FRAME_INTERVAL_MS = 100; // Fallback: assume 10fps if no timestamps
+
+        const log = (msg) => console.log('[Preview]', msg);
+
+        function formatTime(ms) {
+            if (ms === null || ms === undefined || isNaN(ms)) ms = 0;
+            const totalSeconds = Math.floor(ms / 1000);
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            const millis = Math.floor(ms % 1000);
+            return String(minutes).padStart(2, '0') + ':' + 
+                   String(seconds).padStart(2, '0') + '.' + 
+                   String(millis).padStart(3, '0');
+        }
 
         function updateCanvasSize(width, height, devicePixelRatio) {
-            // Store logical dimensions
             currentLogicalWidth = Math.round(width / devicePixelRatio);
             currentLogicalHeight = Math.round(height / devicePixelRatio);
             
-            // Set canvas internal resolution (physical pixels)
             if (canvas.width !== width || canvas.height !== height) {
                 canvas.width = width;
                 canvas.height = height;
             }
             
-            // Calculate the max display size that fits in the container
             const containerRect = container.getBoundingClientRect();
-            const containerWidth = containerRect.width - 32; // padding
-            const containerHeight = containerRect.height - 32; // padding
+            const containerWidth = containerRect.width - 32;
+            const containerHeight = containerRect.height - 32;
             
-            // Use logical dimensions as base for display
-            const logicalWidth = currentLogicalWidth;
-            const logicalHeight = currentLogicalHeight;
+            const scaleX = containerWidth / currentLogicalWidth;
+            const scaleY = containerHeight / currentLogicalHeight;
+            const scale = Math.min(scaleX, scaleY, 1);
             
-            // Calculate scale to fit in container
-            const scaleX = containerWidth / logicalWidth;
-            const scaleY = containerHeight / logicalHeight;
-            const scale = Math.min(scaleX, scaleY, 1); // Don't scale up beyond 1x
-            
-            // Apply display size (CSS pixels)
-            const displayWidth = Math.round(logicalWidth * scale);
-            const displayHeight = Math.round(logicalHeight * scale);
-            
-            canvas.style.width = displayWidth + 'px';
-            canvas.style.height = displayHeight + 'px';
-            
-            log('Display size: ' + displayWidth + 'x' + displayHeight + ' (scale: ' + scale.toFixed(2) + ')');
+            canvas.style.width = Math.round(currentLogicalWidth * scale) + 'px';
+            canvas.style.height = Math.round(currentLogicalHeight * scale) + 'px';
         }
 
-        // Handle container resize
         const resizeObserver = new ResizeObserver(() => {
             if (currentLogicalWidth > 0 && currentLogicalHeight > 0) {
                 const dpr = canvas.width / currentLogicalWidth;
@@ -243,39 +475,79 @@ export class PreviewPanel {
             };
 
             ws.onclose = (e) => {
-                log('WebSocket closed: code=' + e.code + ' reason=' + e.reason);
+                log('WebSocket closed: code=' + e.code);
                 status.textContent = 'Disconnected';
                 status.className = 'disconnected';
                 reconnectTimeout = setTimeout(connect, 2000);
             };
 
             ws.onerror = (e) => {
-                log('WebSocket error: ' + e.message);
+                log('WebSocket error');
             };
 
             ws.onmessage = (event) => {
                 if (typeof event.data === 'string') {
-                    pendingMetadata = JSON.parse(event.data);
-                    log('Got metadata: ' + event.data.substring(0, 50));
+                    const data = JSON.parse(event.data);
+                    
+                    if (data.type === 'frame') {
+                        pendingMetadata = data;
+                    } else if (data.type === 'testComplete') {
+                        handleTestComplete(data);
+                    } else if (data.type === 'noFrames') {
+                        waitingMessage.innerHTML = '<div style="color: #f87171;">No frames captured</div>';
+                    }
                 } else if (event.data instanceof ArrayBuffer && pendingMetadata) {
-                    log('Got frame data: ' + event.data.byteLength + ' bytes');
-                    renderFrame(pendingMetadata, new Uint8ClampedArray(event.data));
+                    receiveFrame(pendingMetadata, new Uint8ClampedArray(event.data));
                     pendingMetadata = null;
                 }
             };
         }
 
-        function renderFrame(meta, rgbaData) {
-            log('Rendering: ' + meta.width + 'x' + meta.height + ' @' + meta.devicePixelRatio + 'x');
-            const { width, height, devicePixelRatio } = meta;
+        function receiveFrame(meta, rgbaData) {
+            // Skip ready signal frames (0x0 dimensions) - they're just handshake signals
+            if (meta.width === 0 || meta.height === 0) {
+                return;
+            }
             
-            updateCanvasSize(width, height, devicePixelRatio);
-
-            const imageData = new ImageData(rgbaData, width, height);
-            ctx.putImageData(imageData, 0, 0);
-
-            dimensions.textContent = currentLogicalWidth + '×' + currentLogicalHeight + ' @' + devicePixelRatio + 'x';
+            waitingMessage.style.display = 'none';
             
+            // Use timestamp if available and valid, otherwise use frame index * default interval
+            const frameIndex = meta.index !== undefined ? meta.index : frameHistory.length;
+            const hasValidTimestamp = meta.timestampMs && meta.timestampMs > 0;
+            const timestampMs = hasValidTimestamp ? meta.timestampMs : (frameIndex * DEFAULT_FRAME_INTERVAL_MS);
+            
+            const frameData = { meta, rgbaData, timestampMs: timestampMs, relativeMs: 0 };
+            
+            if (meta.index !== undefined && meta.index < frameHistory.length) {
+                frameHistory[meta.index] = frameData;
+            } else {
+                frameHistory.push(frameData);
+            }
+            
+            // Recalculate relative timestamps
+            if (frameHistory.length > 0) {
+                const firstTimestamp = frameHistory[0].timestampMs || 0;
+                frameHistory.forEach((f, i) => {
+                    if (f.timestampMs && f.timestampMs > 0) {
+                        f.relativeMs = f.timestampMs - firstTimestamp;
+                    } else {
+                        // Fallback: use frame index for timing
+                        f.relativeMs = i * DEFAULT_FRAME_INTERVAL_MS;
+                    }
+                });
+                const lastRelativeMs = frameHistory[frameHistory.length - 1].relativeMs || 0;
+                totalDurationMs = Math.max(lastRelativeMs, MIN_DURATION_MS);
+            }
+            
+            if (!isPlaying && currentFrameIndex === frameHistory.length - 2) {
+                currentFrameIndex = frameHistory.length - 1;
+            }
+            
+            renderFrameAtIndex(currentFrameIndex);
+            updateTimelineMarkers();
+            updateUI();
+            
+            // FPS counter
             frameCount++;
             const now = Date.now();
             if (now - lastFpsUpdate >= 1000) {
@@ -284,6 +556,321 @@ export class PreviewPanel {
                 lastFpsUpdate = now;
             }
         }
+
+        function handleTestComplete(data) {
+            testComplete = true;
+            
+            if (data.totalDurationMs !== undefined) {
+                totalDurationMs = Math.max(data.totalDurationMs, MIN_DURATION_MS);
+            }
+            
+            if (data.frameTimeline && Array.isArray(data.frameTimeline)) {
+                data.frameTimeline.forEach((ft) => {
+                    if (ft.index < frameHistory.length) {
+                        frameHistory[ft.index].relativeMs = ft.relativeMs;
+                    }
+                });
+            }
+            
+            updateTimelineMarkers();
+            updateUI();
+            
+            // Auto-play from beginning when test completes
+            if (frameHistory.length > 1) {
+                currentFrameIndex = 0;
+                renderFrameAtIndex(0);
+                play();
+            }
+        }
+
+        function renderFrameAtIndex(index) {
+            if (index < 0 || index >= frameHistory.length) return;
+            
+            const frame = frameHistory[index];
+            // Skip frames with invalid dimensions (ready signal frames)
+            if (frame.meta.width <= 0 || frame.meta.height <= 0) return;
+            currentFrameIndex = index;
+            renderFrame(frame.meta, frame.rgbaData);
+            updateUI();
+        }
+
+        function renderFrame(meta, rgbaData) {
+            const { width, height, devicePixelRatio } = meta;
+            
+            updateCanvasSize(width, height, devicePixelRatio);
+
+            const imageData = new ImageData(rgbaData, width, height);
+            ctx.putImageData(imageData, 0, 0);
+
+            dimensions.textContent = currentLogicalWidth + '×' + currentLogicalHeight + ' @' + devicePixelRatio + 'x';
+        }
+
+        function updateTimelineMarkers() {
+            frameMarkersContainer.innerHTML = '';
+            
+            if (frameHistory.length === 0 || totalDurationMs === 0) return;
+            
+            frameHistory.forEach((frame, index) => {
+                const marker = document.createElement('div');
+                marker.className = 'frame-marker' + (index === currentFrameIndex ? ' current' : '');
+                const position = (frame.relativeMs / totalDurationMs) * 100;
+                marker.style.left = position + '%';
+                
+                const tooltip = document.createElement('div');
+                tooltip.className = 'marker-tooltip';
+                tooltip.textContent = 'Frame ' + (index + 1) + ' • ' + formatTime(frame.relativeMs);
+                marker.appendChild(tooltip);
+                
+                marker.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    pause();
+                    seekToFrame(index);
+                });
+                
+                frameMarkersContainer.appendChild(marker);
+            });
+        }
+
+        function updateUI() {
+            frameCounter.textContent = 'Frame ' + (currentFrameIndex + 1) + '/' + frameHistory.length;
+            
+            const currentTime = frameHistory.length > 0 ? frameHistory[currentFrameIndex].relativeMs : 0;
+            timeDisplay.textContent = formatTime(currentTime) + ' / ' + formatTime(totalDurationMs);
+            
+            const progress = totalDurationMs > 0 ? (currentTime / totalDurationMs) * 100 : 0;
+            timelineProgress.style.width = progress + '%';
+            playhead.style.left = progress + '%';
+            
+            // Show replay icon when finished, pause when playing, play when paused
+            if (playbackFinished) {
+                playPauseBtn.textContent = '↻';
+            } else {
+                playPauseBtn.textContent = isPlaying ? '⏸' : '▶';
+            }
+            
+            const markers = frameMarkersContainer.querySelectorAll('.frame-marker');
+            markers.forEach((marker, index) => {
+                marker.classList.toggle('current', index === currentFrameIndex);
+            });
+        }
+
+        function getFirstValidFrameIndex() {
+            for (let i = 0; i < frameHistory.length; i++) {
+                if (frameHistory[i].meta.width > 0 && frameHistory[i].meta.height > 0) {
+                    return i;
+                }
+            }
+            return 0;
+        }
+
+        function getLastValidFrameIndex() {
+            for (let i = frameHistory.length - 1; i >= 0; i--) {
+                if (frameHistory[i].meta.width > 0 && frameHistory[i].meta.height > 0) {
+                    return i;
+                }
+            }
+            return frameHistory.length - 1;
+        }
+
+        function play() {
+            if (frameHistory.length < 2) return;
+            
+            // Clear finished state first
+            playbackFinished = false;
+            
+            const lastValidIndex = getLastValidFrameIndex();
+            
+            // If at end, restart from beginning
+            if (currentFrameIndex >= lastValidIndex) {
+                const firstValidIndex = getFirstValidFrameIndex();
+                currentFrameIndex = firstValidIndex;
+                // Render first valid frame immediately so user sees it
+                const frame = frameHistory[firstValidIndex];
+                if (frame.meta.width > 0 && frame.meta.height > 0) {
+                    renderFrame(frame.meta, frame.rgbaData);
+                }
+            }
+            
+            isPlaying = true;
+            playbackStartTime = performance.now();
+            playbackStartPosition = frameHistory[currentFrameIndex]?.relativeMs || 0;
+            
+            updateUI();
+            animationFrameId = requestAnimationFrame(playbackLoop);
+        }
+
+        function pause(finished = false) {
+            isPlaying = false;
+            playbackFinished = finished;
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+            updateUI();
+        }
+
+        function togglePlayPause() {
+            if (isPlaying) {
+                pause();
+            } else {
+                play();
+            }
+        }
+
+        function playbackLoop(timestamp) {
+            if (!isPlaying) return;
+            
+            const elapsed = (timestamp - playbackStartTime) * playbackSpeed;
+            const currentPosition = playbackStartPosition + elapsed;
+            
+            // Find the frame at or before current position (skip invalid frames)
+            let targetIndex = getFirstValidFrameIndex();
+            for (let i = frameHistory.length - 1; i >= 0; i--) {
+                if (frameHistory[i].relativeMs <= currentPosition) {
+                    // Skip invalid frames
+                    if (frameHistory[i].meta.width > 0 && frameHistory[i].meta.height > 0) {
+                        targetIndex = i;
+                        break;
+                    }
+                }
+            }
+            
+            if (targetIndex !== currentFrameIndex) {
+                renderFrameAtIndex(targetIndex);
+            }
+            
+            const progress = Math.min((currentPosition / totalDurationMs) * 100, 100);
+            timelineProgress.style.width = progress + '%';
+            playhead.style.left = progress + '%';
+            timeDisplay.textContent = formatTime(Math.min(currentPosition, totalDurationMs)) + ' / ' + formatTime(totalDurationMs);
+            
+            // Stop at end instead of looping
+            if (currentPosition >= totalDurationMs) {
+                renderFrameAtIndex(getLastValidFrameIndex());
+                pause(true);  // Mark as finished
+                return;
+            }
+            
+            animationFrameId = requestAnimationFrame(playbackLoop);
+        }
+
+        function seekToFrame(index, clearFinished = true) {
+            index = Math.max(0, Math.min(index, frameHistory.length - 1));
+            
+            // Find nearest valid frame if this one is invalid
+            const frame = frameHistory[index];
+            if (!frame || frame.meta.width === 0 || frame.meta.height === 0) {
+                // Search forward first
+                let validIndex = -1;
+                for (let i = index; i < frameHistory.length; i++) {
+                    const f = frameHistory[i];
+                    if (f && f.meta.width > 0 && f.meta.height > 0) {
+                        validIndex = i;
+                        break;
+                    }
+                }
+                // If not found forward, search backward
+                if (validIndex < 0) {
+                    for (let i = index - 1; i >= 0; i--) {
+                        const f = frameHistory[i];
+                        if (f && f.meta.width > 0 && f.meta.height > 0) {
+                            validIndex = i;
+                            break;
+                        }
+                    }
+                }
+                if (validIndex >= 0) {
+                    index = validIndex;
+                } else {
+                    return; // No valid frames
+                }
+            }
+            
+            if (clearFinished) playbackFinished = false;  // Clear finished state when user manually seeks
+            renderFrameAtIndex(index);
+            
+            if (isPlaying) {
+                playbackStartTime = performance.now();
+                playbackStartPosition = frameHistory[index].relativeMs;
+            }
+        }
+        
+        function seekToPrevValidFrame() {
+            for (let i = currentFrameIndex - 1; i >= 0; i--) {
+                const f = frameHistory[i];
+                if (f && f.meta.width > 0 && f.meta.height > 0) {
+                    seekToFrame(i);
+                    return;
+                }
+            }
+        }
+        
+        function seekToNextValidFrame() {
+            for (let i = currentFrameIndex + 1; i < frameHistory.length; i++) {
+                const f = frameHistory[i];
+                if (f && f.meta.width > 0 && f.meta.height > 0) {
+                    seekToFrame(i);
+                    return;
+                }
+            }
+        }
+
+        function seekToPosition(positionMs) {
+            let targetIndex = 0;
+            for (let i = frameHistory.length - 1; i >= 0; i--) {
+                if (frameHistory[i].relativeMs <= positionMs) {
+                    targetIndex = i;
+                    break;
+                }
+            }
+            seekToFrame(targetIndex);
+        }
+
+        // Event listeners
+        playPauseBtn.addEventListener('click', togglePlayPause);
+        skipStartBtn.addEventListener('click', () => { pause(); seekToFrame(getFirstValidFrameIndex()); });
+        skipEndBtn.addEventListener('click', () => { pause(); seekToFrame(getLastValidFrameIndex()); });
+        prevFrameBtn.addEventListener('click', () => { pause(); seekToPrevValidFrame(); });
+        nextFrameBtn.addEventListener('click', () => { pause(); seekToNextValidFrame(); });
+        
+        speedSelect.addEventListener('change', (e) => {
+            playbackSpeed = parseFloat(e.target.value);
+            if (isPlaying) {
+                playbackStartTime = performance.now();
+                playbackStartPosition = frameHistory[currentFrameIndex].relativeMs;
+            }
+        });
+        
+        timeline.addEventListener('click', (e) => {
+            const rect = timeline.getBoundingClientRect();
+            const clickPosition = (e.clientX - rect.left) / rect.width;
+            const targetMs = clickPosition * totalDurationMs;
+            pause();
+            seekToPosition(targetMs);
+        });
+        
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                togglePlayPause();
+            } else if (e.code === 'ArrowLeft') {
+                e.preventDefault();
+                pause();
+                seekToFrame(currentFrameIndex - 1);
+            } else if (e.code === 'ArrowRight') {
+                e.preventDefault();
+                pause();
+                seekToFrame(currentFrameIndex + 1);
+            } else if (e.code === 'Home') {
+                e.preventDefault();
+                pause();
+                seekToFrame(0);
+            } else if (e.code === 'End') {
+                e.preventDefault();
+                pause();
+                seekToFrame(frameHistory.length - 1);
+            }
+        });
 
         connect();
     </script>
