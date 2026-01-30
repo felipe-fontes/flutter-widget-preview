@@ -1,303 +1,335 @@
-# Fontes Widget Viewer
+# Flutter Widget Preview 🎯
 
-A CLI-first widget preview system that streams Flutter widget test frames via gRPC. View your widget tests in real-time in a browser.
+**Real-time widget testing for Flutter — see your UI as you build it.**
 
-## Architecture
+Flutter Widget Preview is a VS Code extension that lets you **see your widget tests render in real-time**. No more running tests blind — watch your widgets come to life frame by frame.
 
-```
-┌─────────────────────────┐                    ┌─────────────────────────┐                    ┌─────────────────────────┐
-│                         │    gRPC Stream     │                         │    WebSocket       │                         │
-│   Flutter Widget Test   │ ─────────────────► │   preview_viewer CLI    │ ─────────────────► │      Browser            │
-│   + PreviewTestBinding  │   Frame (RGBA)     │   (relay server)        │   Frame (RGBA)     │   (canvas renderer)     │
-│                         │                    │                         │                    │                         │
-└─────────────────────────┘                    └─────────────────────────┘                    └─────────────────────────┘
-         ▲                                              ▲
-         │                                              │
-    Captures frames                              Relays frames to
-    on each pump()                               connected browsers
-```
+<p align="center">
+  <img src="extension/media/icon.png" alt="Flutter Widget Preview" width="200">
+</p>
 
-## Packages
+<!-- ![Flutter Preview Demo](media/demo.gif) -->
 
-### preview_core
+## ✨ Features
 
-**Responsibility**: Core gRPC infrastructure for streaming frames.
-
-| Component | Description |
-|-----------|-------------|
-| `preview.proto` | Protocol buffer definitions for Frame, Status, and PreviewService |
-| `PreviewGrpcServer` | gRPC server that accepts client connections and broadcasts frames |
-| `PreviewGrpcClient` | gRPC client that connects to server and receives frame stream |
-| `Frame` | Protobuf message containing RGBA pixel data, dimensions, and metadata |
-
-**Key Files**:
-- `lib/src/grpc_server.dart` - Server implementation with `pushFrame()` and `watchFrames()` RPC
-- `lib/src/grpc_client.dart` - Client implementation with `connect()` and `watchFrames()` stream
-- `lib/src/generated/` - Auto-generated protobuf/gRPC code
-
-### preview_binding
-
-**Responsibility**: Custom Flutter test binding that captures rendered frames.
-
-| Component | Description |
-|-----------|-------------|
-| `PreviewTestBinding` | Custom `TestWidgetsFlutterBinding` that intercepts rendering |
-| `PreviewPlatformDispatcher` | Wraps platform dispatcher to capture scenes |
-| `startServer()` / `stopServer()` | Controls the embedded gRPC server |
-
-**How it works**:
-1. Extends `TestWidgetsFlutterBinding` and implements `LiveTestWidgetsFlutterBinding`
-2. On each `scheduleFrame()`, captures the rendered layer tree as an image
-3. Converts the image to raw RGBA bytes
-4. Pushes the frame to the gRPC server for connected viewers
-
-**Key Files**:
-- `lib/src/preview_test_binding.dart` - Main binding implementation
-- `lib/src/preview_platform_dispatcher.dart` - Platform dispatcher wrapper
-
-### preview_viewer
-
-**Responsibility**: CLI tool that connects to a test and displays frames in a browser.
-
-| Component | Description |
-|-----------|-------------|
-| `FrameRelay` | Connects to gRPC server and relays frames to browser WebSockets |
-| `ViewerServer` | HTTP server that serves the viewer HTML and handles WebSocket connections |
-| `viewer.html` | Canvas-based renderer that displays frames at ~10 FPS |
-
-**Key Files**:
-- `bin/preview_viewer.dart` - CLI entry point
-- `lib/src/frame_relay.dart` - gRPC to WebSocket bridge
-- `lib/src/viewer_server.dart` - HTTP/WebSocket server with embedded HTML
-
-## Installation
-
-```bash
-cd fontes_widget_viewer
-
-# Install preview_core dependencies
-cd packages/preview_core
-dart pub get
-
-# Install preview_binding dependencies
-cd ../preview_binding
-flutter pub get
-
-# Install preview_viewer dependencies
-cd ../preview_viewer
-dart pub get
-```
-
-## Usage
-
-### Option 1: Demo Server (Test the Viewer)
-
-Run a demo that generates animated frames without Flutter:
-
-```bash
-# Terminal 1: Start demo server
-cd packages/preview_core
-dart run bin/demo_server.dart
-
-# Terminal 2: Start viewer
-cd packages/preview_viewer
-dart run bin/preview_viewer.dart --grpc-port 50055
-
-# Open http://localhost:9090 in your browser
-```
-
-### Option 2: Flutter Widget Test
-
-Use in your Flutter widget tests:
+### 🎬 Visual Widget Testing
+Click **"▶ Preview"** above any `testWidgets()` to see your widget render live:
 
 ```dart
-import 'package:flutter/material.dart';
-import 'package:flutter_test/flutter_test.dart';
-import 'package:preview_binding/preview_binding.dart';
+testWidgets('counter increments', (tester) async {
+  await tester.pumpWidget(MyApp());
+  expect(find.text('0'), findsOneWidget);
+  
+  await tester.tap(find.byIcon(Icons.add));
+  await tester.pump();  // 📸 Frame captured!
+  
+  expect(find.text('1'), findsOneWidget);
+});
+```
 
-void main() {
-  final binding = PreviewTestBinding.ensureInitialized();
+Every `pump()` captures a frame — see exactly what Flutter renders at each step.
 
-  testWidgets('my widget preview', (tester) async {
-    final serverUri = await binding.startServer(port: 0);
-    print('Connect viewer to: $serverUri');
+### 📱 Device Resolution Presets
+Preview on real device sizes:
+- **iOS**: iPhone 15 Pro, iPhone SE, iPad Pro 12.9", iPad Air
+- **Android**: Pixel 8, Pixel 8 Pro, Galaxy S24, Galaxy Fold
+- **Desktop**: 1080p, 1440p, 4K, Custom sizes
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Center(child: Text('Hello Preview!')),
-        ),
-      ),
-    );
+### 🤖 AI-Powered Widget Development (MCP)
+Let your AI assistant **see** the widgets it creates. The extension includes an **MCP (Model Context Protocol) server** that enables AI coding assistants to preview Flutter widgets programmatically:
 
-    // Each pump() automatically captures and streams a frame
-    await tester.pump();
+```
+You: "Create a profile card with an avatar and name"
+AI: [writes widget code]
+AI: [calls preview_widget to see the result]
+AI: "I've created the widget. The avatar is 80px and centered.
+     Here's how it looks: [shows rendered preview]"
+```
 
-    await binding.stopServer();
-  });
+Works with **GitHub Copilot**, **Claude**, **Cursor**, and any MCP-compatible assistant.
+
+---
+
+## 🚀 Quick Start
+
+### Installation
+
+1. **Install the Extension**
+   - Download from VS Code Marketplace, or
+   - Install from VSIX: `code --install-extension flutter-preview-0.1.0.vsix`
+
+2. **Open a Flutter Project** with widget tests
+
+3. **Click "▶ Preview"** above any `testWidgets()`
+
+That's it! The preview panel opens automatically.
+
+---
+
+## 📖 Usage Guide
+
+### Basic Preview
+
+1. Open any Dart file with `testWidgets()` calls
+2. Click the **"▶ Preview"** CodeLens that appears above a test
+3. Watch the preview panel as your test runs
+4. Use the timeline to navigate between captured frames
+
+### Select Device Resolution
+
+1. Open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`)
+2. Run **"Flutter: Select Preview Resolution"**
+3. Choose a device preset or enter custom dimensions
+
+### Available Commands
+
+| Command | Description |
+|---------|-------------|
+| `Flutter: Preview Widget Test` | Run preview on current test |
+| `Flutter: Stop Widget Preview` | Stop the running preview |
+| `Flutter: Select Preview Resolution` | Choose target device size |
+
+---
+
+## 🤖 MCP Integration for AI Assistants
+
+Flutter Preview includes an **MCP (Model Context Protocol) server** that enables AI assistants to preview Flutter widgets programmatically. This creates a powerful feedback loop where AI can **see** what it builds.
+
+### How It Works
+
+```
+┌─────────────────────┐     stdio      ┌─────────────────────┐   flutter test  ┌─────────────────────┐
+│   AI Assistant      │ ◀──────────▶   │   MCP Server        │ ──────────────▶ │   Widget Test       │
+│   (Copilot/Claude)  │    JSON-RPC    │   (mcp_preview)     │                 │   (captures PNG)    │
+└─────────────────────┘                └─────────────────────┘                 └─────────────────────┘
+```
+
+### Available MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `preview_widget` | Preview arbitrary widget code — AI provides Dart code, gets rendered PNG back |
+| `run_widget_test` | Run an existing test file and capture all frames |
+| `list_frames` | List metadata for all captured frames (count, dimensions, timestamps) |
+| `get_frame` | Get a specific frame as base64-encoded PNG image |
+| `get_all_frames` | Get all frames at once (useful for animations/transitions) |
+
+### Example: AI Widget Development Workflow
+
+1. **User**: "Create a login form with email and password fields"
+
+2. **AI** writes the widget code:
+   ```dart
+   Column(
+     mainAxisAlignment: MainAxisAlignment.center,
+     children: [
+       TextField(decoration: InputDecoration(labelText: 'Email')),
+       SizedBox(height: 16),
+       TextField(
+         decoration: InputDecoration(labelText: 'Password'),
+         obscureText: true,
+       ),
+       SizedBox(height: 24),
+       ElevatedButton(onPressed: () {}, child: Text('Login')),
+     ],
+   )
+   ```
+
+3. **AI** calls `preview_widget` with the code
+
+4. **AI** receives the rendered PNG image and can verify:
+   - Layout looks correct
+   - Spacing is appropriate
+   - No overflow errors
+
+5. **AI** iterates if needed, or confirms completion with visual proof
+
+### Register MCP Server
+
+#### VS Code (with GitHub Copilot)
+The extension automatically registers the MCP server. Enable it in:
+- **Settings** → **GitHub Copilot** → **MCP Servers** → Enable "Flutter Preview"
+
+#### Cursor
+Use Command Palette → **"Flutter Preview: Register MCP for Cursor"**
+
+Or use the deep link: `cursor://anysphere.cursor-deeplink/mcp/install?name=flutter-preview&config=...`
+
+#### Manual Configuration (Any MCP Client)
+
+Add to your `mcp.json` or equivalent configuration:
+```json
+{
+  "mcpServers": {
+    "flutter-preview": {
+      "command": "dart",
+      "args": ["run", "mcp_preview", "--fonts-path", "/path/to/fonts"],
+      "cwd": "/path/to/extension/packages/mcp_preview"
+    }
+  }
 }
 ```
 
-Then connect the viewer:
+### MCP Tool Examples
+
+**Preview a simple widget:**
+```json
+{
+  "tool": "preview_widget",
+  "arguments": {
+    "widgetCode": "Container(color: Colors.blue, width: 200, height: 200, child: Center(child: Text('Hello!', style: TextStyle(color: Colors.white, fontSize: 24))))",
+    "width": 400,
+    "height": 300
+  }
+}
+```
+
+**Run an existing test:**
+```json
+{
+  "tool": "run_widget_test",
+  "arguments": {
+    "testFile": "/path/to/my_widget_test.dart",
+    "testName": "renders correctly"
+  }
+}
+```
+
+**Get the last rendered frame:**
+```json
+{
+  "tool": "get_frame",
+  "arguments": {
+    "index": "last"
+  }
+}
+```
+
+---
+
+## ⚙️ Configuration
+
+### Extension Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `flutterPreview.webPort` | `9090` | Port for the preview web server |
+| `flutterPreview.openInBrowser` | `false` | Open preview in external browser instead of VS Code webview |
+
+### Environment Variables (dart-defines)
+
+The extension automatically passes these to your tests:
+
+| Define | Description |
+|--------|-------------|
+| `ENABLE_PREVIEW=true` | Activates preview mode |
+| `PREVIEW_WIDTH=<n>` | Logical viewport width |
+| `PREVIEW_HEIGHT=<n>` | Logical viewport height |
+| `PREVIEW_DEVICE_PIXEL_RATIO=<n>` | Device pixel ratio (for high-DPI) |
+| `PREVIEW_FONTS_PATH=<path>` | Path to fonts for consistent rendering |
+
+---
+
+## 🏗️ Architecture Overview
+
+```
+┌─────────────────────┐     gRPC      ┌─────────────────────┐   WebSocket   ┌─────────────────────┐
+│   Flutter Test      │ ──────────▶   │   Viewer Server     │ ──────────▶   │   VS Code Webview   │
+│   (preview_binding) │               │   (preview_viewer)  │               │                     │
+└─────────────────────┘               └─────────────────────┘               └─────────────────────┘
+         │                                     │                                      │
+         │ Captures frames                     │ Caches ALL frames                    │ Displays
+         │ on pump() calls                     │ for late connections                 │ frame timeline
+```
+
+**How it works:**
+
+1. You click **"▶ Preview"** on a test
+2. Extension injects a custom test binding that captures frames
+3. Each `pump()` renders the widget and streams the frame via gRPC
+4. A relay server converts gRPC to WebSocket for the browser
+5. VS Code webview displays frames with a timeline scrubber
+
+For the complete technical deep-dive, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
+---
+
+## 📦 Packages
+
+| Package | Purpose |
+|---------|---------|
+| `preview_binding` | Custom Flutter test binding with frame capture |
+| `preview_core` | gRPC protocol definitions and server/client |
+| `preview_viewer` | HTTP/WebSocket relay server for browser viewing |
+| `mcp_preview` | MCP server for AI assistant integration |
+
+---
+
+## 🧪 Development
+
+### Build the Extension
 
 ```bash
-cd packages/preview_viewer
-dart run bin/preview_viewer.dart --grpc-port <PORT>
+cd extension
+npm install
+npm run package  # Creates flutter-preview-X.X.X.vsix
 ```
 
-### CLI Options
-
-```
-preview_viewer [options]
-
-Options:
-  -h, --grpc-host    gRPC server host (default: localhost)
-  -p, --grpc-port    gRPC server port (required)
-  -w, --web-port     Web server port (default: 9090)
-      --help         Show help
-```
-
-## Running Tests
-
-### Unit Tests
+### Run Tests
 
 ```bash
-# Test gRPC server functionality
-cd packages/preview_core
-dart test test/server_test.dart -r expanded
+# Test gRPC functionality
+cd packages/preview_core && dart test
 
-# Test client-server round-trip
-dart test test/client_server_test.dart -r expanded
+# Test binding frame capture
+cd packages/preview_binding && flutter test
 
-# Test binding frame capture (Flutter)
-cd packages/preview_binding
-flutter test test/binding_capture_test.dart -r expanded
+# Test viewer relay
+cd packages/preview_viewer && dart test
 
-# Test viewer relay functionality
-cd packages/preview_viewer
-dart test test/viewer_test.dart -r expanded
+# Test MCP server
+cd packages/mcp_preview && dart test
 ```
 
-### Expected Output Markers
-
-Each component outputs verification markers:
-
-| Marker | Source | Meaning |
-|--------|--------|---------|
-| `GRPC_SERVER_STARTED:<port>` | preview_core | gRPC server listening on port |
-| `GRPC_CLIENT_CONNECTED:<host>:<port>` | preview_core | Client connected to server |
-| `CLIENT_CONNECTED:watchFrames` | preview_core | Client subscribed to frame stream |
-| `FRAME_PUSHED:<W>x<H>` | preview_core | Frame added to broadcast stream |
-| `FRAME_CAPTURED:<W>x<H>` | preview_binding | Frame captured from render tree |
-| `PREVIEW_SERVER_STARTED:<uri>` | preview_binding | Binding's gRPC server ready |
-| `RELAY_CONNECTED_TO_TEST:<host>:<port>` | preview_viewer | Viewer connected to test |
-| `RELAY_FRAME:<W>x<H>` | preview_viewer | Frame relayed to browser |
-| `BROWSER_CONNECTED:<N> total` | preview_viewer | Browser WebSocket connected |
-| `VIEWER_SERVER_STARTED:<url>` | preview_viewer | Web server ready |
-
-## Protocol Buffer Schema
-
-```protobuf
-syntax = "proto3";
-package fontes_widget_viewer;
-
-service PreviewService {
-  rpc WatchFrames(WatchRequest) returns (stream Frame);
-  rpc GetStatus(Empty) returns (Status);
-}
-
-message Frame {
-  bytes rgbaData = 1;        // Raw RGBA pixel data
-  int32 width = 2;           // Frame width in pixels
-  int32 height = 3;          // Frame height in pixels
-  double devicePixelRatio = 4;
-  int64 timestampMs = 5;
-  string testName = 6;
-}
-
-message Status {
-  bool isRunning = 1;
-  string testName = 2;
-  int32 frameCount = 3;
-  string serverUri = 4;
-}
-```
-
-## Data Flow
-
-1. **Frame Capture** (preview_binding)
-   - `PreviewTestBinding.scheduleFrame()` is called on each `pump()`
-   - Captures `RenderView.debugLayer` as an image via `layer.toImage()`
-   - Converts to raw RGBA bytes via `image.toByteData(format: rawRgba)`
-
-2. **Frame Streaming** (preview_core)
-   - `PreviewGrpcServer.pushFrame(frame)` adds frame to broadcast `StreamController`
-   - Connected clients receive frames via `watchFrames()` gRPC stream
-
-3. **Frame Relay** (preview_viewer)
-   - `FrameRelay` subscribes to gRPC frame stream
-   - For each frame, sends metadata JSON then raw bytes over WebSocket
-
-4. **Frame Rendering** (Browser)
-   - JavaScript receives metadata + RGBA bytes
-   - Creates `ImageData` and renders to canvas via `putImageData()`
-
-## Limitations
-
-- **Flutter Test Timing**: Widget tests run with mocked async, which can interfere with gRPC real-time streaming. The demo server works reliably; widget test streaming may require running the gRPC server in a separate isolate.
-
-- **One-Way Streaming**: Currently viewer only receives frames. No interaction events (tap, scroll) are sent back to the test.
-
-- **Frame Size**: Large frames (e.g., 2400x1800 at 4 bytes/pixel = 17MB) can impact performance. Consider reducing test window size.
-
-## Project Structure
-
-```
-fontes_widget_viewer/
-├── proto/
-│   └── preview.proto           # gRPC service definition
-├── packages/
-│   ├── preview_core/           # gRPC server/client
-│   │   ├── bin/
-│   │   │   └── demo_server.dart    # Demo frame generator
-│   │   ├── lib/
-│   │   │   └── src/
-│   │   │       ├── grpc_server.dart
-│   │   │       ├── grpc_client.dart
-│   │   │       └── generated/      # protoc output
-│   │   └── test/
-│   │       ├── server_test.dart
-│   │       └── client_server_test.dart
-│   ├── preview_binding/        # Flutter test binding
-│   │   ├── lib/
-│   │   │   └── src/
-│   │   │       ├── preview_test_binding.dart
-│   │   │       └── preview_platform_dispatcher.dart
-│   │   └── test/
-│   │       └── binding_capture_test.dart
-│   └── preview_viewer/         # CLI viewer tool
-│       ├── bin/
-│       │   └── preview_viewer.dart
-│       ├── lib/
-│       │   └── src/
-│       │       ├── frame_relay.dart
-│       │       └── viewer_server.dart
-│       └── test/
-│           └── viewer_test.dart
-└── README.md
-```
-
-## Regenerating Protocol Buffers
-
-If you modify `proto/preview.proto`:
+### Regenerate Protocol Buffers
 
 ```bash
 cd packages/preview_core
 protoc --dart_out=grpc:lib/src/generated -I../../proto ../../proto/preview.proto
 ```
 
-Requires: `protoc` compiler and `protoc-gen-dart` plugin.
+---
 
-## License
+## 🔧 Troubleshooting
 
-MIT
+### Preview panel is empty
+- Ensure your test has `pump()` calls — frames are only captured on pump
+- Check the Output panel (View → Output → Flutter Preview) for errors
+
+### MCP tools not showing in Copilot
+- Go to Settings → GitHub Copilot → MCP Servers
+- Ensure "Flutter Preview" is enabled
+- Restart VS Code if needed
+
+### Frame capture is slow
+- Reduce viewport size in resolution settings
+- Large frames (4K) require more memory and processing
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please read our contributing guidelines before submitting PRs.
+
+---
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+---
+
+<p align="center">
+  <b>Built for Flutter developers who want to see what they're building.</b><br>
+  <sub>Visual widget testing • AI-powered development • Real device previews</sub>
+</p>

@@ -1,4 +1,4 @@
-# Fontes Widget Viewer - Architecture
+# Flutter Widget Preview - Architecture
 
 A VS Code extension that provides real-time widget preview for Flutter tests.
 

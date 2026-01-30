@@ -1,14 +1,34 @@
 {
-  "name": "fontes-widget-viewer",
-  "displayName": "Fontes Widget Viewer",
-  "description": "Visualize Flutter widget rendering in real-time during tests",
-  "version": "0.0.1",
+  "name": "flutter-widget-preview",
+  "displayName": "Flutter Widget Preview",
+  "description": "Real-time widget testing for Flutter — see your UI render live during tests. Includes MCP tools for AI-powered widget development.",
+  "version": "0.1.0",
   "publisher": "fontes",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#0175C2",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/user/flutter-preview"
+  },
+  "keywords": [
+    "flutter",
+    "widget",
+    "preview",
+    "testing",
+    "visual testing",
+    "mcp",
+    "ai",
+    "copilot"
+  ],
   "engines": {
     "vscode": "^1.99.0"
   },
   "categories": [
     "Testing",
+    "Visualization",
     "Debuggers",
     "Other"
   ],
@@ -19,39 +39,64 @@
   "contributes": {
     "mcpServerDefinitionProviders": [
       {
-        "id": "fontes-widget-viewer.flutter-preview",
+        "id": "flutter-preview.mcp-server",
         "label": "Flutter Preview"
       }
     ],
     "commands": [
       {
-        "command": "fontesWidgetViewer.previewTest",
+        "command": "flutterPreview.previewTest",
         "title": "Preview Widget Test",
-        "category": "Flutter"
+        "category": "Flutter Preview",
+        "icon": "$(play)"
       },
       {
-        "command": "fontesWidgetViewer.stopPreview",
+        "command": "flutterPreview.stopPreview",
         "title": "Stop Widget Preview",
-        "category": "Flutter"
+        "category": "Flutter Preview",
+        "icon": "$(debug-stop)"
       },
       {
-        "command": "fontesWidgetViewer.selectResolution",
+        "command": "flutterPreview.selectResolution",
         "title": "Select Preview Resolution",
-        "category": "Flutter"
+        "category": "Flutter Preview",
+        "icon": "$(device-mobile)"
+      },
+      {
+        "command": "flutterPreview.registerMcpCursor",
+        "title": "Register MCP for Cursor",
+        "category": "Flutter Preview"
       }
     ],
     "configuration": {
-      "title": "Fontes Widget Viewer",
+      "title": "Flutter Preview",
       "properties": {
-        "fontesWidgetViewer.webPort": {
+        "flutterPreview.webPort": {
           "type": "number",
           "default": 9090,
           "description": "Port for the preview web server"
         },
-        "fontesWidgetViewer.openInBrowser": {
+        "flutterPreview.openInBrowser": {
           "type": "boolean",
           "default": false,
-          "description": "Open preview in external browser instead of VSCode webview"
+          "description": "Open preview in external browser instead of VS Code webview"
+        },
+        "flutterPreview.defaultResolution": {
+          "type": "string",
+          "default": "iPhone 15 Pro",
+          "enum": [
+            "iPhone 15 Pro",
+            "iPhone 15 Pro Max",
+            "iPhone SE (3rd gen)",
+            "iPad Pro 12.9\"",
+            "Pixel 8",
+            "Pixel 8 Pro",
+            "Galaxy S24",
+            "Desktop 1080p",
+            "Desktop 1440p",
+            "Custom"
+          ],
+          "description": "Default device resolution for preview"
         }
       }
     }
