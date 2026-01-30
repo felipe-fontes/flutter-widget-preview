@@ -110,6 +110,7 @@
   "scripts": {
     "sync-packages": "rm -rf packages && mkdir -p packages && cp -r ../packages/preview_binding ../packages/preview_core ../packages/preview_viewer ../packages/mcp_preview packages/ && rm -rf packages/*/.dart_tool packages/*/build",
     "vscode:prepublish": "npm run sync-packages && npm run compile",
+    "build": "npm run sync-packages && npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "package": "npm run sync-packages && npm run compile && npx @vscode/vsce package --allow-missing-repository",

@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src ws://localhost:{{PORT}} ws://127.0.0.1:{{PORT}};">
+    <title>Widget Preview</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            height: 100%;
+            overflow: hidden;
+        }
+
+        body {
+            background: var(--vscode-editor-background, #1e1e1e);
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+            color: var(--vscode-foreground, #ccc);
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 12px;
+            flex-shrink: 0;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        h1 {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--vscode-descriptionForeground, #888);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        #testName {
+            font-size: 13px;
+            color: var(--vscode-foreground, #e0e0e0);
+            font-weight: 500;
+            max-width: 400px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        #status {
+            font-size: 11px;
+            padding: 4px 10px;
+            border-radius: 10px;
+            background: rgba(74, 222, 128, 0.15);
+            color: #4ade80;
+        }
+
+        #status.disconnected {
+            background: rgba(248, 113, 113, 0.15);
+            color: #f87171;
+        }
+
+        #status.connecting {
+            background: rgba(250, 204, 21, 0.15);
+            color: #facc15;
+        }
+
+        .canvas-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            min-height: 0;
+            overflow: hidden;
+            position: relative;
+        }
+
+        #preview {
+            display: block;
+            border-radius: 8px;
+            background: var(--vscode-editor-background, #252526);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        /* Waiting state */
+        .waiting-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: var(--vscode-descriptionForeground, #666);
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .waiting-message .spinner {
+            width: 24px;
+            height: 24px;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-top-color: var(--vscode-focusBorder, #4f46e5);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 12px;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Playback Controls */
+        .playback-container {
+            padding: 12px 16px;
+            background: var(--vscode-sideBar-background, rgba(0, 0, 0, 0.3));
+            flex-shrink: 0;
+            border-top: 1px solid var(--vscode-panel-border, #333);
+        }
+
+        .playback-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .playback-btn {
+            background: var(--vscode-button-secondaryBackground, rgba(255, 255, 255, 0.1));
+            border: none;
+            color: var(--vscode-button-secondaryForeground, #ccc);
+            width: 28px;
+            height: 28px;
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            transition: all 0.15s ease;
+        }
+
+        .playback-btn:hover {
+            background: var(--vscode-button-secondaryHoverBackground, rgba(255, 255, 255, 0.2));
+        }
+
+        .playback-btn:active {
+            transform: scale(0.95);
+        }
+
+        .playback-btn.play-pause {
+            width: 32px;
+            height: 32px;
+            background: var(--vscode-button-background, #4f46e5);
+            color: var(--vscode-button-foreground, #fff);
+        }
+
+        .playback-btn.play-pause:hover {
+            background: var(--vscode-button-hoverBackground, #6366f1);
+        }
+
+        .speed-select {
+            background: var(--vscode-dropdown-background, rgba(255, 255, 255, 0.1));
+            border: 1px solid var(--vscode-dropdown-border, transparent);
+            color: var(--vscode-dropdown-foreground, #ccc);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            cursor: pointer;
+        }
+
+        .time-display {
+            font-size: 11px;
+            color: var(--vscode-descriptionForeground, #888);
+            min-width: 120px;
+            text-align: right;
+            font-family: 'SF Mono', 'Fira Code', monospace;
+        }
+
+        .frame-counter {
+            font-size: 11px;
+            color: var(--vscode-descriptionForeground, #666);
+            margin-left: auto;
+        }
+
+        /* Timeline Track */
+        .timeline-container {
+            position: relative;
+            height: 20px;
+            display: flex;
+            align-items: center;
+        }
+
+        .timeline-track {
+            position: relative;
+            flex: 1;
+            height: 4px;
+            background: var(--vscode-scrollbarSlider-background, rgba(255, 255, 255, 0.1));
+            border-radius: 2px;
+            cursor: pointer;
+        }
+
+        .timeline-progress {
+            position: absolute;
+            left: 0;
+            top: 0;
+            height: 100%;
+            background: var(--vscode-focusBorder, #4f46e5);
+            border-radius: 2px;
+            pointer-events: none;
+        }
+
+        .timeline-playhead {
+            position: absolute;
+            top: 50%;
+            width: 12px;
+            height: 12px;
+            background: #fff;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        /* Frame Markers */
+        .frame-markers {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            height: 16px;
+            pointer-events: none;
+        }
+
+        .frame-marker {
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.25);
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            top: 50%;
+            transition: all 0.15s ease;
+            pointer-events: auto;
+            cursor: pointer;
+        }
+
+        .frame-marker:hover {
+            background: rgba(255, 255, 255, 0.5);
+            transform: translate(-50%, -50%) scale(1.3);
+        }
+
+        .frame-marker.current {
+            background: #fff;
+            transform: translate(-50%, -50%) scale(1.3);
+            box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+        }
+
+        /* Tooltip */
+        .marker-tooltip {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--vscode-editorWidget-background, rgba(0, 0, 0, 0.9));
+            color: var(--vscode-editorWidget-foreground, #fff);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s ease;
+            margin-bottom: 6px;
+        }
+
+        .frame-marker:hover .marker-tooltip {
+            opacity: 1;
+        }
+
+        .info {
+            padding: 8px 16px;
+            font-size: 11px;
+            color: var(--vscode-descriptionForeground, #666);
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            flex-shrink: 0;
+            border-top: 1px solid var(--vscode-panel-border, #333);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <div class="header-left">
+            <h1>Widget Preview</h1>
+            <span id="testName"></span>
+        </div>
+        <div id="status" class="connecting">Connecting...</div>
+    </div>
+    <div class="canvas-container">
+        <canvas id="preview" width="400" height="800"></canvas>
+        <div id="waitingMessage" class="waiting-message">
+            <div class="spinner"></div>
+            Waiting for frames...
+        </div>
+    </div>
+
+    <div class="playback-container">
+        <div class="playback-controls">
+            <button id="skipStart" class="playback-btn" title="Skip to start (Home)">⏮</button>
+            <button id="prevFrame" class="playback-btn" title="Previous frame (←)">◀</button>
+            <button id="playPause" class="playback-btn play-pause" title="Play/Pause (Space)">▶</button>
+            <button id="nextFrame" class="playback-btn" title="Next frame (→)">▶</button>
+            <button id="skipEnd" class="playback-btn" title="Skip to end (End)">⏭</button>
+            <select id="speedSelect" class="speed-select" title="Playback speed">
+                <option value="0.25">0.25x</option>
+                <option value="0.5">0.5x</option>
+                <option value="1" selected>1x</option>
+                <option value="2">2x</option>
+                <option value="4">4x</option>
+            </select>
+            <div id="timeDisplay" class="time-display">00:00.000 / 00:00.000</div>
+            <div id="frameCounter" class="frame-counter">Frame 0/0</div>
+        </div>
+        <div class="timeline-container">
+            <div id="timeline" class="timeline-track">
+                <div id="timelineProgress" class="timeline-progress"></div>
+                <div id="frameMarkers" class="frame-markers"></div>
+                <div id="playhead" class="timeline-playhead"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="info">
+        <span id="dimensions">--</span>
+        <span id="fps">-- fps</span>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('preview');
+        const ctx = canvas.getContext('2d');
+        const status = document.getElementById('status');
+        const testNameEl = document.getElementById('testName');
+        const dimensions = document.getElementById('dimensions');
+        const fpsDisplay = document.getElementById('fps');
+        const container = document.querySelector('.canvas-container');
+        const waitingMessage = document.getElementById('waitingMessage');
+
+        // Playback elements
+        const playPauseBtn = document.getElementById('playPause');
+        const skipStartBtn = document.getElementById('skipStart');
+        const skipEndBtn = document.getElementById('skipEnd');
+        const prevFrameBtn = document.getElementById('prevFrame');
+        const nextFrameBtn = document.getElementById('nextFrame');
+        const speedSelect = document.getElementById('speedSelect');
+        const timeDisplay = document.getElementById('timeDisplay');
+        const frameCounter = document.getElementById('frameCounter');
+        const timeline = document.getElementById('timeline');
+        const timelineProgress = document.getElementById('timelineProgress');
+        const playhead = document.getElementById('playhead');
+        const frameMarkersContainer = document.getElementById('frameMarkers');
+
+        // State
+        let frameHistory = [];
+        let currentFrameIndex = 0;
+        let isPlaying = false;
+        let playbackFinished = false;
+        let playbackSpeed = 1;
+        let playbackStartTime = null;
+        let playbackStartPosition = 0;
+        let totalDurationMs = 0;
+        let testComplete = false;
+        let animationFrameId = null;
+        let pendingMetadata = null;
+        let reconnectTimeout = null;
+        let currentLogicalWidth = 0;
+        let currentLogicalHeight = 0;
+        let frameCount = 0;
+        let lastFpsUpdate = Date.now();
+        let currentTestName = '';
+
+        const MIN_DURATION_MS = 500;
+        const DEFAULT_FRAME_INTERVAL_MS = 100;
+
+        const log = (msg) => console.log('[Preview]', msg);
+
+        function formatTime(ms) {
+            if (ms === null || ms === undefined || isNaN(ms)) ms = 0;
+            const totalSeconds = Math.floor(ms / 1000);
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            const millis = Math.floor(ms % 1000);
+            return String(minutes).padStart(2, '0') + ':' +
+                String(seconds).padStart(2, '0') + '.' +
+                String(millis).padStart(3, '0');
+        }
+
+        function resetState() {
+            log('Resetting state for new session');
+            // Stop any ongoing playback
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+
+            // Clear all state
+            frameHistory = [];
+            currentFrameIndex = 0;
+            isPlaying = false;
+            playbackFinished = false;
+            playbackStartTime = null;
+            playbackStartPosition = 0;
+            totalDurationMs = 0;
+            testComplete = false;
+            pendingMetadata = null;
+            currentLogicalWidth = 0;
+            currentLogicalHeight = 0;
+            frameCount = 0;
+            lastFpsUpdate = Date.now();
+            currentTestName = '';
+
+            // Reset UI
+            waitingMessage.style.display = '';
+            waitingMessage.innerHTML = '<div class="spinner"></div>Waiting for frames...';
+            testNameEl.textContent = '';
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            frameMarkersContainer.innerHTML = '';
+            timelineProgress.style.width = '0%';
+            playhead.style.left = '0%';
+            timeDisplay.textContent = '00:00.000 / 00:00.000';
+            frameCounter.textContent = 'Frame 0/0';
+            playPauseBtn.textContent = '▶';
+            dimensions.textContent = '--';
+            fpsDisplay.textContent = '-- fps';
+        }
+
+        function updateCanvasSize(width, height, devicePixelRatio) {
+            currentLogicalWidth = Math.round(width / devicePixelRatio);
+            currentLogicalHeight = Math.round(height / devicePixelRatio);
+
+            if (canvas.width !== width || canvas.height !== height) {
+                canvas.width = width;
+                canvas.height = height;
+            }
+
+            const containerRect = container.getBoundingClientRect();
+            const containerWidth = containerRect.width - 32;
+            const containerHeight = containerRect.height - 32;
+
+            const scaleX = containerWidth / currentLogicalWidth;
+            const scaleY = containerHeight / currentLogicalHeight;
+            const scale = Math.min(scaleX, scaleY, 1);
+
+            canvas.style.width = Math.round(currentLogicalWidth * scale) + 'px';
+            canvas.style.height = Math.round(currentLogicalHeight * scale) + 'px';
+        }
+
+        const resizeObserver = new ResizeObserver(() => {
+            if (currentLogicalWidth > 0 && currentLogicalHeight > 0) {
+                const dpr = canvas.width / currentLogicalWidth;
+                updateCanvasSize(canvas.width, canvas.height, dpr);
+            }
+        });
+        resizeObserver.observe(container);
+
+        function connect() {
+            log('Connecting to ws://localhost:{{PORT}}/ws...');
+            status.textContent = 'Connecting...';
+            status.className = 'connecting';
+
+            const ws = new WebSocket('ws://localhost:{{PORT}}/ws');
+            ws.binaryType = 'arraybuffer';
+
+            ws.onopen = () => {
+                log('WebSocket connected!');
+                status.textContent = 'Connected';
+                status.className = '';
+                if (reconnectTimeout) {
+                    clearTimeout(reconnectTimeout);
+                    reconnectTimeout = null;
+                }
+                // Reset state when reconnecting to handle new test sessions
+                resetState();
+            };
+
+            ws.onclose = (e) => {
+                log('WebSocket closed: code=' + e.code);
+                status.textContent = 'Disconnected';
+                status.className = 'disconnected';
+                reconnectTimeout = setTimeout(connect, 2000);
+            };
+
+            ws.onerror = (e) => {
+                log('WebSocket error');
+            };
+
+            ws.onmessage = (event) => {
+                if (typeof event.data === 'string') {
+                    const data = JSON.parse(event.data);
+
+                    if (data.type === 'newSession') {
+                        log('New session started, resetting state');
+                        resetState();
+                    } else if (data.type === 'frame') {
+                        pendingMetadata = data;
+                    } else if (data.type === 'testComplete') {
+                        handleTestComplete(data);
+                    } else if (data.type === 'noFrames') {
+                        waitingMessage.innerHTML = '<div style="color: #f87171;">No frames captured</div>';
+                    }
+                } else if (event.data instanceof ArrayBuffer && pendingMetadata) {
+                    receiveFrame(pendingMetadata, new Uint8ClampedArray(event.data));
+                    pendingMetadata = null;
+                }
+            };
+        }
+
+        function receiveFrame(meta, rgbaData) {
+            // Skip ready signal frames (0x0 dimensions)
+            if (meta.width === 0 || meta.height === 0) {
+                return;
+            }
+
+            waitingMessage.style.display = 'none';
+
+            // Update test name if provided
+            if (meta.testName && meta.testName !== '__READY__' && meta.testName !== currentTestName) {
+                currentTestName = meta.testName;
+                testNameEl.textContent = currentTestName;
+                document.title = 'Preview: ' + currentTestName;
+            }
+
+            const frameIndex = meta.index !== undefined ? meta.index : frameHistory.length;
+            const hasValidTimestamp = meta.timestampMs && meta.timestampMs > 0;
+            const timestampMs = hasValidTimestamp ? meta.timestampMs : (frameIndex * DEFAULT_FRAME_INTERVAL_MS);
+
+            const frameData = { meta, rgbaData, timestampMs: timestampMs, relativeMs: 0 };
+
+            if (meta.index !== undefined && meta.index < frameHistory.length) {
+                frameHistory[meta.index] = frameData;
+            } else {
+                frameHistory.push(frameData);
+            }
+
+            if (frameHistory.length > 0) {
+                const firstTimestamp = frameHistory[0].timestampMs || 0;
+                frameHistory.forEach((f, i) => {
+                    if (f.timestampMs && f.timestampMs > 0) {
+                        f.relativeMs = f.timestampMs - firstTimestamp;
+                    } else {
+                        f.relativeMs = i * DEFAULT_FRAME_INTERVAL_MS;
+                    }
+                });
+                const lastRelativeMs = frameHistory[frameHistory.length - 1].relativeMs || 0;
+                totalDurationMs = Math.max(lastRelativeMs, MIN_DURATION_MS);
+            }
+
+            if (!isPlaying && currentFrameIndex === frameHistory.length - 2) {
+                currentFrameIndex = frameHistory.length - 1;
+            }
+
+            renderFrameAtIndex(currentFrameIndex);
+            updateTimelineMarkers();
+            updateUI();
+
+            frameCount++;
+            const now = Date.now();
+            if (now - lastFpsUpdate >= 1000) {
+                fpsDisplay.textContent = frameCount + ' fps';
+                frameCount = 0;
+                lastFpsUpdate = now;
+            }
+        }
+
+        function handleTestComplete(data) {
+            testComplete = true;
+
+            if (data.totalDurationMs !== undefined) {
+                totalDurationMs = Math.max(data.totalDurationMs, MIN_DURATION_MS);
+            }
+
+            if (data.frameTimeline && Array.isArray(data.frameTimeline)) {
+                data.frameTimeline.forEach((ft) => {
+                    if (ft.index < frameHistory.length) {
+                        frameHistory[ft.index].relativeMs = ft.relativeMs;
+                    }
+                });
+            }
+
+            updateTimelineMarkers();
+            updateUI();
+
+            if (frameHistory.length > 1) {
+                currentFrameIndex = 0;
+                renderFrameAtIndex(0);
+                play();
+            }
+        }
+
+        function renderFrameAtIndex(index) {
+            if (index < 0 || index >= frameHistory.length) return;
+
+            const frame = frameHistory[index];
+            if (frame.meta.width <= 0 || frame.meta.height <= 0) return;
+            currentFrameIndex = index;
+            renderFrame(frame.meta, frame.rgbaData);
+            updateUI();
+        }
+
+        function renderFrame(meta, rgbaData) {
+            const { width, height, devicePixelRatio } = meta;
+
+            updateCanvasSize(width, height, devicePixelRatio);
+
+            const imageData = new ImageData(rgbaData, width, height);
+            ctx.putImageData(imageData, 0, 0);
+
+            dimensions.textContent = currentLogicalWidth + '×' + currentLogicalHeight + ' @' + devicePixelRatio + 'x';
+        }
+
+        function updateTimelineMarkers() {
+            frameMarkersContainer.innerHTML = '';
+
+            if (frameHistory.length === 0 || totalDurationMs === 0) return;
+
+            frameHistory.forEach((frame, index) => {
+                const marker = document.createElement('div');
+                marker.className = 'frame-marker' + (index === currentFrameIndex ? ' current' : '');
+                const position = (frame.relativeMs / totalDurationMs) * 100;
+                marker.style.left = position + '%';
+
+                const tooltip = document.createElement('div');
+                tooltip.className = 'marker-tooltip';
+                tooltip.textContent = 'Frame ' + (index + 1) + ' • ' + formatTime(frame.relativeMs);
+                marker.appendChild(tooltip);
+
+                marker.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    pause();
+                    seekToFrame(index);
+                });
+
+                frameMarkersContainer.appendChild(marker);
+            });
+        }
+
+        function updateUI() {
+            frameCounter.textContent = 'Frame ' + (currentFrameIndex + 1) + '/' + frameHistory.length;
+
+            const currentTime = frameHistory.length > 0 ? frameHistory[currentFrameIndex].relativeMs : 0;
+            timeDisplay.textContent = formatTime(currentTime) + ' / ' + formatTime(totalDurationMs);
+
+            const progress = totalDurationMs > 0 ? (currentTime / totalDurationMs) * 100 : 0;
+            timelineProgress.style.width = progress + '%';
+            playhead.style.left = progress + '%';
+
+            if (playbackFinished) {
+                playPauseBtn.textContent = '↻';
+            } else {
+                playPauseBtn.textContent = isPlaying ? '⏸' : '▶';
+            }
+
+            const markers = frameMarkersContainer.querySelectorAll('.frame-marker');
+            markers.forEach((marker, index) => {
+                marker.classList.toggle('current', index === currentFrameIndex);
+            });
+        }
+
+        function getFirstValidFrameIndex() {
+            for (let i = 0; i < frameHistory.length; i++) {
+                if (frameHistory[i].meta.width > 0 && frameHistory[i].meta.height > 0) {
+                    return i;
+                }
+            }
+            return 0;
+        }
+
+        function getLastValidFrameIndex() {
+            for (let i = frameHistory.length - 1; i >= 0; i--) {
+                if (frameHistory[i].meta.width > 0 && frameHistory[i].meta.height > 0) {
+                    return i;
+                }
+            }
+            return frameHistory.length - 1;
+        }
+
+        function play() {
+            if (frameHistory.length < 2) return;
+
+            playbackFinished = false;
+
+            const lastValidIndex = getLastValidFrameIndex();
+
+            if (currentFrameIndex >= lastValidIndex) {
+                const firstValidIndex = getFirstValidFrameIndex();
+                currentFrameIndex = firstValidIndex;
+                const frame = frameHistory[firstValidIndex];
+                if (frame.meta.width > 0 && frame.meta.height > 0) {
+                    renderFrame(frame.meta, frame.rgbaData);
+                }
+            }
+
+            isPlaying = true;
+            playbackStartTime = performance.now();
+            playbackStartPosition = frameHistory[currentFrameIndex]?.relativeMs || 0;
+
+            updateUI();
+            animationFrameId = requestAnimationFrame(playbackLoop);
+        }
+
+        function pause(finished = false) {
+            isPlaying = false;
+            playbackFinished = finished;
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+            updateUI();
+        }
+
+        function togglePlayPause() {
+            if (isPlaying) {
+                pause();
+            } else {
+                play();
+            }
+        }
+
+        function playbackLoop(timestamp) {
+            if (!isPlaying) return;
+
+            const elapsed = (timestamp - playbackStartTime) * playbackSpeed;
+            const currentPosition = playbackStartPosition + elapsed;
+
+            let targetIndex = getFirstValidFrameIndex();
+            for (let i = frameHistory.length - 1; i >= 0; i--) {
+                if (frameHistory[i].relativeMs <= currentPosition) {
+                    if (frameHistory[i].meta.width > 0 && frameHistory[i].meta.height > 0) {
+                        targetIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            if (targetIndex !== currentFrameIndex) {
+                renderFrameAtIndex(targetIndex);
+            }
+
+            const progress = Math.min((currentPosition / totalDurationMs) * 100, 100);
+            timelineProgress.style.width = progress + '%';
+            playhead.style.left = progress + '%';
+            timeDisplay.textContent = formatTime(Math.min(currentPosition, totalDurationMs)) + ' / ' + formatTime(totalDurationMs);
+
+            if (currentPosition >= totalDurationMs) {
+                renderFrameAtIndex(getLastValidFrameIndex());
+                pause(true);
+                return;
+            }
+
+            animationFrameId = requestAnimationFrame(playbackLoop);
+        }
+
+        function seekToFrame(index, clearFinished = true) {
+            index = Math.max(0, Math.min(index, frameHistory.length - 1));
+
+            const frame = frameHistory[index];
+            if (!frame || frame.meta.width === 0 || frame.meta.height === 0) {
+                let validIndex = -1;
+                for (let i = index; i < frameHistory.length; i++) {
+                    const f = frameHistory[i];
+                    if (f && f.meta.width > 0 && f.meta.height > 0) {
+                        validIndex = i;
+                        break;
+                    }
+                }
+                if (validIndex < 0) {
+                    for (let i = index - 1; i >= 0; i--) {
+                        const f = frameHistory[i];
+                        if (f && f.meta.width > 0 && f.meta.height > 0) {
+                            validIndex = i;
+                            break;
+                        }
+                    }
+                }
+                if (validIndex >= 0) {
+                    index = validIndex;
+                } else {
+                    return;
+                }
+            }
+
+            if (clearFinished) playbackFinished = false;
+            renderFrameAtIndex(index);
+
+            if (isPlaying) {
+                playbackStartTime = performance.now();
+                playbackStartPosition = frameHistory[index].relativeMs;
+            }
+        }
+
+        function seekToPrevValidFrame() {
+            for (let i = currentFrameIndex - 1; i >= 0; i--) {
+                const f = frameHistory[i];
+                if (f && f.meta.width > 0 && f.meta.height > 0) {
+                    seekToFrame(i);
+                    return;
+                }
+            }
+        }
+
+        function seekToNextValidFrame() {
+            for (let i = currentFrameIndex + 1; i < frameHistory.length; i++) {
+                const f = frameHistory[i];
+                if (f && f.meta.width > 0 && f.meta.height > 0) {
+                    seekToFrame(i);
+                    return;
+                }
+            }
+        }
+
+        function seekToPosition(positionMs) {
+            let targetIndex = 0;
+            for (let i = frameHistory.length - 1; i >= 0; i--) {
+                if (frameHistory[i].relativeMs <= positionMs) {
+                    targetIndex = i;
+                    break;
+                }
+            }
+            seekToFrame(targetIndex);
+        }
+
+        // Event listeners
+        playPauseBtn.addEventListener('click', togglePlayPause);
+        skipStartBtn.addEventListener('click', () => { pause(); seekToFrame(getFirstValidFrameIndex()); });
+        skipEndBtn.addEventListener('click', () => { pause(); seekToFrame(getLastValidFrameIndex()); });
+        prevFrameBtn.addEventListener('click', () => { pause(); seekToPrevValidFrame(); });
+        nextFrameBtn.addEventListener('click', () => { pause(); seekToNextValidFrame(); });
+
+        speedSelect.addEventListener('change', (e) => {
+            playbackSpeed = parseFloat(e.target.value);
+            if (isPlaying) {
+                playbackStartTime = performance.now();
+                playbackStartPosition = frameHistory[currentFrameIndex].relativeMs;
+            }
+        });
+
+        timeline.addEventListener('click', (e) => {
+            const rect = timeline.getBoundingClientRect();
+            const clickPosition = (e.clientX - rect.left) / rect.width;
+            const targetMs = clickPosition * totalDurationMs;
+            pause();
+            seekToPosition(targetMs);
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                togglePlayPause();
+            } else if (e.code === 'ArrowLeft') {
+                e.preventDefault();
+                pause();
+                seekToFrame(currentFrameIndex - 1);
+            } else if (e.code === 'ArrowRight') {
+                e.preventDefault();
+                pause();
+                seekToFrame(currentFrameIndex + 1);
+            } else if (e.code === 'Home') {
+                e.preventDefault();
+                pause();
+                seekToFrame(0);
+            } else if (e.code === 'End') {
+                e.preventDefault();
+                pause();
+                seekToFrame(frameHistory.length - 1);
+            }
+        });
+
+        connect();
+    </script>
+</body>
+
+</html>

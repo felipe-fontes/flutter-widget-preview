@@ -91,6 +91,10 @@ class FrameRelay {
     _browserConnections.add(channel);
     print('Browser connected (${_browserConnections.length} total)');
 
+    // Always notify browser of new session so it can reset its state
+    // This is important when browsers reconnect after server restart
+    _sendNewSession(channel);
+
     // Send ALL cached frames to the newly connected browser
     if (_frameCache.isNotEmpty) {
       print('Replaying ${_frameCache.length} cached frames to new browser');
@@ -122,6 +126,17 @@ class FrameRelay {
         print('Browser connection error: $e');
       },
     );
+  }
+
+  void _sendNewSession(WebSocketChannel connection) {
+    try {
+      connection.sink.add(jsonEncode({
+        'type': 'newSession',
+        'message': 'New test session started',
+      }));
+    } catch (e) {
+      print('Error sending new session message: $e');
+    }
   }
 
   void _handleFrame(Frame frame) {

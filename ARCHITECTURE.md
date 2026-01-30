@@ -7,12 +7,12 @@ A VS Code extension that provides real-time widget preview for Flutter tests.
 When you run a Flutter widget test with preview enabled, the extension:
 1. Captures rendered frames during test execution
 2. Streams frames via gRPC to a viewer server  
-3. Relays frames to a WebSocket-connected browser in VS Code
+3. Relays frames to WebSocket-connected browsers (VS Code webview + external browser)
 
 ```
 ┌─────────────────────┐     gRPC      ┌─────────────────────┐   WebSocket   ┌─────────────────────┐
-│   Flutter Test      │ ──────────▶   │   Viewer Server     │ ──────────▶   │   VS Code Webview   │
-│   (preview_binding) │               │   (preview_viewer)  │               │                     │
+│   Flutter Test      │ ──────────▶   │   Viewer Server     │ ──────────▶   │   Browser(s)        │
+│   (preview_binding) │               │   (preview_viewer)  │               │   VS Code + External│
 └─────────────────────┘               └─────────────────────┘               └─────────────────────┘
          │                                     │                                      │
          │ Renders frames                      │ Caches ALL frames                    │ Displays
@@ -121,8 +121,9 @@ The extension listens to stdout for `GRPC_SERVER_STARTED:<port>` to know when th
 spawn('dart', [
     'run',
     'bin/preview_viewer.dart',
-    '--grpc-port', grpcPort,  // Connect to test's gRPC
-    '--web-port', webPort,     // Serve WebSocket to browser
+    '--grpc-port', grpcPort,    // Connect to test's gRPC
+    '--web-port', webPort,       // Serve WebSocket to browser
+    '--template', templatePath,  // Path to shared viewer.html
 ], { cwd: viewerPackagePath });
 ```
 
@@ -251,28 +252,66 @@ class FrameRelay {
   void addBrowserConnection(WebSocketChannel channel) {
     _browserConnections.add(channel);
     
+    // Notify browser to reset state (important when reconnecting to new test)
+    _sendNewSession(channel);
+    
     // REPLAY all cached frames to newly connected browser
     for (final frame in _frameCache) {
       _sendFrameToBrowser(channel, frame);
     }
   }
+  
+  void _sendNewSession(WebSocketChannel connection) {
+    connection.sink.add(jsonEncode({'type': 'newSession'}));
+  }
 }
 ```
 
-### 7. VS Code Webview Displays Frames
+### 7. Single Shared HTML Template
 
-The extension opens a webview panel with an embedded WebSocket client:
+Both VS Code webview and external browser use the same `templates/viewer.html` file:
 
+**VS Code Webview** (`webview.ts`):
 ```typescript
-// webview.ts
-const wsUrl = `ws://localhost:${port}/ws`;
-const ws = new WebSocket(wsUrl);
+private _getHtmlForWebview(port: number): string {
+    const templatePath = path.join(this._extensionUri.fsPath, 'templates', 'viewer.html');
+    let html = fs.readFileSync(templatePath, 'utf8');
+    html = html.replace(/\{\{PORT\}\}/g, port.toString());
+    // Add timestamp to force webview refresh on re-runs
+    html = html.replace('</head>', `<!-- session: ${Date.now()} -->\n</head>`);
+    return html;
+}
 
-ws.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  if (data.type === 'frame') {
-    displayFrame(data.image);  // base64-encoded PNG
+public updatePort(port: number): void {
+    // Clear HTML first to force refresh even with same port
+    this._panel.webview.html = '';
+    this._panel.webview.html = this._getHtmlForWebview(port);
+}
+```
+
+**External Browser** (`viewer_server.dart`):
+```dart
+class ViewerServer {
+  final String _templatePath;  // Required - no fallback HTML
+  
+  String _getViewerHtml(int port) {
+    final file = File(_templatePath);
+    var html = file.readAsStringSync();
+    html = html.replaceAll('{{PORT}}', port.toString());
+    return html;
   }
+}
+```
+
+**Browser handles `newSession` message** (`viewer.html`):
+```javascript
+ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    if (data.type === 'newSession') {
+        resetState();  // Clear frames, test name, timeline for new test
+    } else if (data.type === 'frame') {
+        pendingMetadata = data;
+    }
 };
 ```
 
@@ -283,11 +322,13 @@ ws.onmessage = (event) => {
 │ EXTENSION (TypeScript in VS Code)                                         │
 ├──────────────────────────────────────────────────────────────────────────┤
 │ 1. User clicks "▶ Preview"                                                │
-│ 2. Inject flutter_test_config.dart                                        │
-│ 3. Spawn Process A: flutter test --dart-define=ENABLE_PREVIEW=true       │
-│ 4. Parse stdout for "GRPC_SERVER_STARTED:<port>"                          │
-│ 5. Spawn Process B: dart run preview_viewer --grpc-port <port>           │
-│ 6. Open VS Code webview connected to viewer's WebSocket                   │
+│ 2. stop() - gracefully kill existing processes (SIGTERM → SIGKILL)       │
+│ 3. Inject flutter_test_config.dart                                        │
+│ 4. Spawn Process A: flutter test --dart-define=ENABLE_PREVIEW=true       │
+│ 5. Wait for stdout "GRPC_SERVER_STARTED:<port>"                           │
+│ 6. Spawn Process B: dart run preview_viewer --grpc-port <port>           │
+│ 7. Wait for stdout "VIEWER_SERVER_STARTED:<url>"                          │
+│ 8. Open/refresh webview (clears HTML first to force reload)               │
 └──────────────────────────────────────────────────────────────────────────┘
         │                                    │
         ▼                                    ▼
@@ -328,6 +369,7 @@ The extension and test communicate via stdout messages:
 | Message | Meaning |
 |---------|---------|
 | `GRPC_SERVER_STARTED:<port>` | Test's gRPC server is ready |
+| `VIEWER_SERVER_STARTED:<url>` | Viewer HTTP/WebSocket server is ready |
 | `PREVIEW_WAITING_FOR_VIEWER` | Test is waiting for viewer to connect |
 | `PREVIEW_VIEWER_CONNECTED` | Viewer connected, tests will start |
 | `PREVIEW_TESTS_STARTING` | Tests are about to run |

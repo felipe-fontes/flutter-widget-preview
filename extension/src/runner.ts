@@ -167,7 +167,7 @@ export class PreviewRunner {
     }
 
     async startTest(testFile: string, testName: string, resolution: DeviceResolution): Promise<number | undefined> {
-        this.stop();
+        await this.stop();
 
         // Find the Flutter project root (where pubspec.yaml is)
         const projectRoot = this.findProjectRoot(testFile);
@@ -278,68 +278,148 @@ export class PreviewRunner {
     }
 
     async startViewer(grpcPort: number, webPort: number): Promise<void> {
+        // Stop any existing viewer process gracefully
         if (this.viewerProcess) {
-            this.viewerProcess.kill('SIGKILL');
+            const proc = this.viewerProcess;
             this.viewerProcess = undefined;
+            await this.killProcess(proc, 'Old viewer');
         }
 
         // Kill any stale processes that might be using our port
         await this.killProcessOnPort(webPort);
 
+        // Small extra delay to ensure port is fully released
+        await new Promise<void>((resolve) => setTimeout(resolve, 200));
+
         // The viewer package is inside the extension folder
         const viewerPackagePath = path.join(this.extensionPath, 'packages', 'preview_viewer');
 
+        // Path to the shared HTML template
+        const templatePath = path.join(this.extensionPath, 'templates', 'viewer.html');
+
         this.outputChannel.appendLine(`Starting viewer...`);
         this.outputChannel.appendLine(`  Viewer path: ${viewerPackagePath}`);
+        this.outputChannel.appendLine(`  Template path: ${templatePath}`);
         this.outputChannel.appendLine(`  gRPC port: ${grpcPort}`);
         this.outputChannel.appendLine(`  Web port: ${webPort}`);
 
-        this.viewerProcess = spawn(
-            'dart',
-            [
-                'run',
-                'bin/preview_viewer.dart',
-                '--grpc-port', grpcPort.toString(),
-                '--web-port', webPort.toString(),
-            ],
-            {
-                cwd: viewerPackagePath,
-                shell: true,
-                env: { ...process.env },
-            }
-        );
+        return new Promise((resolve, reject) => {
+            this.viewerProcess = spawn(
+                'dart',
+                [
+                    'run',
+                    'bin/preview_viewer.dart',
+                    '--grpc-port', grpcPort.toString(),
+                    '--web-port', webPort.toString(),
+                    '--template', templatePath,
+                ],
+                {
+                    cwd: viewerPackagePath,
+                    shell: true,
+                    env: { ...process.env },
+                }
+            );
 
-        this.viewerProcess.stdout?.on('data', (data: Buffer) => {
-            this.outputChannel.append(`[viewer] ${data.toString()}`);
+            let resolved = false;
+
+            this.viewerProcess.stdout?.on('data', (data: Buffer) => {
+                const output = data.toString();
+                this.outputChannel.append(`[viewer] ${output}`);
+
+                // Wait for the actual server ready signal
+                if (!resolved && output.includes('VIEWER_SERVER_STARTED')) {
+                    resolved = true;
+                    this.outputChannel.appendLine('Viewer server is ready!');
+                    resolve();
+                }
+            });
+
+            this.viewerProcess.stderr?.on('data', (data: Buffer) => {
+                this.outputChannel.append(`[viewer] ${data.toString()}`);
+            });
+
+            this.viewerProcess.on('error', (error: Error) => {
+                this.outputChannel.appendLine(`Viewer error: ${error.message}`);
+                if (!resolved) {
+                    resolved = true;
+                    reject(error);
+                }
+            });
+
+            this.viewerProcess.on('close', (code: number | null) => {
+                if (!resolved) {
+                    resolved = true;
+                    reject(new Error(`Viewer process exited with code ${code} before server started`));
+                }
+            });
+
+            // Timeout after 30 seconds
+            setTimeout(() => {
+                if (!resolved) {
+                    resolved = true;
+                    this.outputChannel.appendLine('Warning: Timeout waiting for viewer server, continuing anyway...');
+                    resolve();
+                }
+            }, 30000);
         });
-
-        this.viewerProcess.stderr?.on('data', (data: Buffer) => {
-            this.outputChannel.append(`[viewer] ${data.toString()}`);
-        });
-
-        this.viewerProcess.on('error', (error: Error) => {
-            this.outputChannel.appendLine(`Viewer error: ${error.message}`);
-        });
-
-        // Wait a bit for the server to start
-        await new Promise<void>((resolve) => setTimeout(resolve, 3000));
     }
 
-    stop(): void {
+    async stop(): Promise<void> {
         // Cleanup injected files first
         this.cleanupInjectedConfig();
 
+        const stopPromises: Promise<void>[] = [];
+
         if (this.testProcess) {
-            this.testProcess.kill('SIGKILL');
+            const proc = this.testProcess;
             this.testProcess = undefined;
-            this.outputChannel.appendLine('Test process stopped');
+            stopPromises.push(this.killProcess(proc, 'Test'));
         }
 
         if (this.viewerProcess) {
-            this.viewerProcess.kill('SIGKILL');
+            const proc = this.viewerProcess;
             this.viewerProcess = undefined;
-            this.outputChannel.appendLine('Viewer process stopped');
+            stopPromises.push(this.killProcess(proc, 'Viewer'));
         }
+
+        // Wait for all processes to die
+        await Promise.all(stopPromises);
+    }
+
+    private killProcess(proc: ChildProcess, name: string): Promise<void> {
+        return new Promise((resolve) => {
+            // If already dead, resolve immediately
+            if (proc.killed || proc.exitCode !== null) {
+                this.outputChannel.appendLine(`${name} process already stopped`);
+                resolve();
+                return;
+            }
+
+            // Set up listener for process exit
+            const onExit = () => {
+                this.outputChannel.appendLine(`${name} process stopped`);
+                resolve();
+            };
+
+            proc.once('exit', onExit);
+            proc.once('close', onExit);
+
+            // Try graceful SIGTERM first
+            proc.kill('SIGTERM');
+
+            // Force kill after 1 second if still alive
+            setTimeout(() => {
+                if (!proc.killed && proc.exitCode === null) {
+                    this.outputChannel.appendLine(`${name} process didn't respond to SIGTERM, using SIGKILL`);
+                    proc.kill('SIGKILL');
+                }
+            }, 1000);
+
+            // Safety timeout - resolve anyway after 2 seconds
+            setTimeout(() => {
+                resolve();
+            }, 2000);
+        });
     }
 
     /**

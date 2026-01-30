@@ -9,13 +9,15 @@ void main(List<String> args) async {
     ..addOption('grpc-host', abbr: 'h', defaultsTo: 'localhost')
     ..addOption('grpc-port', abbr: 'p', help: 'gRPC server port from test')
     ..addOption('web-port', abbr: 'w', defaultsTo: '9090')
+    ..addOption('template',
+        abbr: 't', help: 'Path to viewer.html template (required)')
     ..addFlag('help', negatable: false);
 
   final results = parser.parse(args);
 
   if (results['help'] as bool) {
     print('Flutter Widget Test Viewer\n');
-    print('Usage: preview_viewer --grpc-port <port>\n');
+    print('Usage: preview_viewer --grpc-port <port> --template <path>\n');
     print(parser.usage);
     exit(0);
   }
@@ -23,7 +25,14 @@ void main(List<String> args) async {
   final grpcPort = results['grpc-port'] as String?;
   if (grpcPort == null) {
     print('ERROR: --grpc-port is required');
-    print('Usage: preview_viewer --grpc-port <port>');
+    print('Usage: preview_viewer --grpc-port <port> --template <path>');
+    exit(1);
+  }
+
+  final templatePath = results['template'] as String?;
+  if (templatePath == null) {
+    print('ERROR: --template is required');
+    print('Usage: preview_viewer --grpc-port <port> --template <path>');
     exit(1);
   }
 
@@ -34,7 +43,7 @@ void main(List<String> args) async {
   print('Connecting to test at $grpcHost:$grpcPort...');
 
   final relay = FrameRelay();
-  final server = ViewerServer(relay);
+  final server = ViewerServer(relay, templatePath: templatePath);
 
   try {
     await relay.connectToTest(grpcHost, int.parse(grpcPort));

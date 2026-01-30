@@ -72,9 +72,9 @@ export function activate(context: vscode.ExtensionContext): void {
                         if (openInBrowser) {
                             vscode.env.openExternal(vscode.Uri.parse(`http://localhost:${webPort}`));
                         } else {
-                            PreviewPanel.createOrShow(context.extensionUri, webPort, () => {
+                            PreviewPanel.createOrShow(context.extensionUri, webPort, async () => {
                                 // Stop the preview runner when the webview panel is closed
-                                previewRunner?.stop();
+                                await previewRunner?.stop();
                                 outputChannel.appendLine('Preview panel closed, stopping preview');
                             });
                         }
@@ -91,8 +91,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
     // Register stop command
     context.subscriptions.push(
-        vscode.commands.registerCommand('flutterPreview.stopPreview', () => {
-            previewRunner?.stop();
+        vscode.commands.registerCommand('flutterPreview.stopPreview', async () => {
+            await previewRunner?.stop();
             PreviewPanel.currentPanel?.dispose();
             outputChannel.appendLine('Preview stopped');
         })
