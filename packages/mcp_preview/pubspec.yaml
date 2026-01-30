@@ -1,0 +1,21 @@
+name: mcp_preview
+description: MCP server for Flutter widget test preview - enables AI to render and see widgets
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  preview_core:
+    path: ../preview_core
+  args: ^2.4.0
+  image: ^4.0.0
+  path: ^1.8.0
+
+dev_dependencies:
+  test: ^1.25.0
+  lints: ^5.0.0
+
+executables:
+  mcp_preview: mcp_preview

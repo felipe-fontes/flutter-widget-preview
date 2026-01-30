@@ -5,7 +5,7 @@
   "version": "0.0.1",
   "publisher": "fontes",
   "engines": {
-    "vscode": "^1.74.0"
+    "vscode": "^1.99.0"
   },
   "categories": [
     "Testing",
@@ -17,6 +17,12 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "mcpServerDefinitionProviders": [
+      {
+        "id": "fontes-widget-viewer.flutter-preview",
+        "label": "Flutter Preview"
+      }
+    ],
     "commands": [
       {
         "command": "fontesWidgetViewer.previewTest",
@@ -51,7 +57,7 @@
     }
   },
   "scripts": {
-    "sync-packages": "rm -rf packages && mkdir -p packages && cp -r ../packages/preview_binding ../packages/preview_core ../packages/preview_viewer packages/ && rm -rf packages/*/.dart_tool packages/*/build",
+    "sync-packages": "rm -rf packages && mkdir -p packages && cp -r ../packages/preview_binding ../packages/preview_core ../packages/preview_viewer ../packages/mcp_preview packages/ && rm -rf packages/*/.dart_tool packages/*/build",
     "vscode:prepublish": "npm run sync-packages && npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",

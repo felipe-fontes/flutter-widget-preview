@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { CodeLensProvider } from './codelens';
 import { PreviewRunner } from './runner';
 import { PreviewPanel } from './webview';
+import { registerMcpServer } from './mcpProvider';
 import {
     DEVICE_RESOLUTIONS,
     DeviceResolution,
@@ -22,6 +23,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
     const outputChannel = vscode.window.createOutputChannel('Fontes Widget Viewer');
     context.subscriptions.push(outputChannel);
+
+    // Register MCP server provider for AI assistants
+    registerMcpServer(context);
 
     // Restore saved resolution from workspace state
     const savedResolutionName = context.workspaceState.get<string>(RESOLUTION_STATE_KEY);

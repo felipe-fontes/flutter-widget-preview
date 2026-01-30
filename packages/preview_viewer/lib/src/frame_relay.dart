@@ -28,6 +28,36 @@ class FrameRelay {
   /// Whether frames are available for replay
   bool get hasFrames => _frameCache.isNotEmpty;
 
+  /// Whether the test stream has ended
+  bool get isStreamEnded => _streamEnded;
+
+  /// Get a specific frame by index (0-based)
+  Frame? getFrame(int index) =>
+      index >= 0 && index < _frameCache.length ? _frameCache[index] : null;
+
+  /// Get the last captured frame
+  Frame? get lastFrame => _frameCache.isNotEmpty ? _frameCache.last : null;
+
+  /// Get the first captured frame
+  Frame? get firstFrame => _frameCache.isNotEmpty ? _frameCache.first : null;
+
+  /// Get all frames
+  List<Frame> get allFrames => List.unmodifiable(_frameCache);
+
+  /// Get metadata for all frames (useful for listing without transferring image data)
+  List<Map<String, dynamic>> get frameMetadata => _frameCache
+      .asMap()
+      .entries
+      .map((e) => {
+            'index': e.key,
+            'width': e.value.width,
+            'height': e.value.height,
+            'devicePixelRatio': e.value.devicePixelRatio,
+            'timestampMs': e.value.timestampMs.toInt(),
+            'testName': e.value.testName,
+          })
+      .toList();
+
   Future<void> connectToTest(String host, int port) async {
     // Clear any previous session data
     _frameCache.clear();

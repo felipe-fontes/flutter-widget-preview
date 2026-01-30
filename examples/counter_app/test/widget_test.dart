@@ -6,7 +6,8 @@ void main() {
   testWidgets('Counter increments smoke test', (WidgetTester tester) async {
     await tester.pumpWidget(const CounterApp());
 
-    // Verify that our counter starts at 0.
+    expect(find.byIcon(Icons.add), findsOneWidget);
+    expect(find.byIcon(Icons.remove), findsOneWidget);
     expect(find.text('0'), findsOneWidget);
     expect(find.text('1'), findsNothing);
 
