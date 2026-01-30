@@ -113,9 +113,11 @@
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "package": "npm run sync-packages && npm run compile && npx @vscode/vsce package --allow-missing-repository",
-    "publish": "npm run sync-packages && npm run compile && npx @vscode/vsce publish",
-    "publish:patch": "npm run sync-packages && npm run compile && npx @vscode/vsce publish patch",
-    "publish:minor": "npm run sync-packages && npm run compile && npx @vscode/vsce publish minor"
+    "publish:vsce": "npx @vscode/vsce publish",
+    "publish:ovsx": "npx ovsx publish",
+    "publish": "npm run sync-packages && npm run compile && npm run publish:vsce && npm run publish:ovsx",
+    "publish:patch": "npm run sync-packages && npm run compile && npx @vscode/vsce publish patch && npm run publish:ovsx",
+    "publish:minor": "npm run sync-packages && npm run compile && npx @vscode/vsce publish minor && npm run publish:ovsx"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
