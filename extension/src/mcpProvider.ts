@@ -8,20 +8,20 @@ import * as fs from 'fs';
 function createMcpScript(extensionPath: string): string {
     const mcpPackagePath = path.join(extensionPath, 'packages', 'mcp_preview');
     const fontsPath = path.join(extensionPath, 'fonts');
-    
+
     const scriptContent = `#!/bin/bash
 cd "${mcpPackagePath}"
 exec dart run bin/mcp_preview.dart --fonts-path="${fontsPath}" "$@"
 `;
-    
+
     const scriptDir = path.join(extensionPath, '.mcp-scripts');
     if (!fs.existsSync(scriptDir)) {
         fs.mkdirSync(scriptDir, { recursive: true });
     }
-    
+
     const scriptPath = path.join(scriptDir, 'run-mcp-preview.sh');
     fs.writeFileSync(scriptPath, scriptContent, { mode: 0o755 });
-    
+
     return scriptPath;
 }
 
@@ -65,7 +65,7 @@ export class FlutterPreviewMcpProvider implements vscode.McpServerDefinitionProv
 async function promptMcpInstall(context: vscode.ExtensionContext, appName: string): Promise<void> {
     const scriptPath = createMcpScript(context.extensionPath);
     const appNameLower = appName.toLowerCase();
-    
+
     // Only Cursor supports the deep link installation
     if (appNameLower.includes('cursor')) {
         const mcpConfig = {
@@ -81,7 +81,7 @@ async function promptMcpInstall(context: vscode.ExtensionContext, appName: strin
             `Would you like to install the Flutter Preview MCP server?`,
             'Yes', 'No'
         );
-        
+
         if (action === 'Yes') {
             await vscode.commands.executeCommand('vscode.open', mcpSetupUri);
         }
@@ -93,12 +93,12 @@ async function promptMcpInstall(context: vscode.ExtensionContext, appName: strin
                 "command": scriptPath
             }
         }, null, 2);
-        
+
         const action = await vscode.window.showInformationMessage(
             `Add this to your MCP settings to enable Flutter Preview`,
             'Copy Config', 'Dismiss'
         );
-        
+
         if (action === 'Copy Config') {
             await vscode.env.clipboard.writeText(mcpJson);
             vscode.window.showInformationMessage('MCP config copied to clipboard!');
@@ -112,11 +112,11 @@ async function promptMcpInstall(context: vscode.ExtensionContext, appName: strin
 export function registerMcpServer(context: vscode.ExtensionContext): void {
     const appName = vscode.env.appName || '';
     const appNameLower = appName.toLowerCase();
-    
+
     const isVsCode = appNameLower.includes('visual studio code');
-    
+
     console.log(`Flutter Preview MCP: Detected appName="${appName}", isVsCode=${isVsCode}`);
-    
+
     // For VS Code: try to use the native API
     if (isVsCode) {
         const lmApi = (vscode as any).lm;
@@ -136,7 +136,7 @@ export function registerMcpServer(context: vscode.ExtensionContext): void {
             }
         }
     }
-    
+
     // For other IDEs (Cursor, Antigravity, etc.): prompt to install via deep link
     console.log('Flutter Preview MCP: Prompting for MCP install');
     promptMcpInstall(context, appName);

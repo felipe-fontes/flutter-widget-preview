@@ -31,7 +31,8 @@ class McpServer {
   Future<void> run() async {
     // Read JSON-RPC messages from stdin
     // The server waits for the client to send 'initialize' first
-    await for (final line in stdin.transform(utf8.decoder).transform(const LineSplitter())) {
+    await for (final line
+        in stdin.transform(utf8.decoder).transform(const LineSplitter())) {
       try {
         final message = jsonDecode(line) as Map<String, dynamic>;
         await _handleMessage(message);
@@ -87,7 +88,8 @@ class McpServer {
       'tools': [
         {
           'name': 'run_widget_test',
-          'description': '''Run a Flutter widget test and capture rendered frames.
+          'description':
+              '''Run a Flutter widget test and capture rendered frames.
             
 This tool executes a Flutter widget test with preview enabled, capturing a PNG image
 for each pump() call. Returns the number of frames captured and the test result.
@@ -102,15 +104,18 @@ Use this to visually verify widget rendering during test execution.''',
               },
               'testName': {
                 'type': 'string',
-                'description': 'Optional: specific test name to run (matches testWidgets name)',
+                'description':
+                    'Optional: specific test name to run (matches testWidgets name)',
               },
               'width': {
                 'type': 'integer',
-                'description': 'Optional: logical viewport width (default: 800)',
+                'description':
+                    'Optional: logical viewport width (default: 800)',
               },
               'height': {
                 'type': 'integer',
-                'description': 'Optional: logical viewport height (default: 600)',
+                'description':
+                    'Optional: logical viewport height (default: 600)',
               },
               'devicePixelRatio': {
                 'type': 'number',
@@ -122,7 +127,8 @@ Use this to visually verify widget rendering during test execution.''',
         },
         {
           'name': 'get_frame',
-          'description': '''Get a specific frame from the last test run as a PNG image.
+          'description':
+              '''Get a specific frame from the last test run as a PNG image.
 
 Use index to get a specific frame (0-based), or use special values:
 - "last" or -1: Get the last frame
@@ -135,7 +141,10 @@ The image is returned as base64-encoded PNG data.''',
               'index': {
                 'oneOf': [
                   {'type': 'integer'},
-                  {'type': 'string', 'enum': ['first', 'last']},
+                  {
+                    'type': 'string',
+                    'enum': ['first', 'last']
+                  },
                 ],
                 'description': 'Frame index (0-based), or "first"/"last"',
               },
@@ -165,14 +174,16 @@ Warning: This may return a large amount of data if many frames were captured.'''
             'properties': {
               'maxFrames': {
                 'type': 'integer',
-                'description': 'Optional: maximum number of frames to return (default: all)',
+                'description':
+                    'Optional: maximum number of frames to return (default: all)',
               },
             },
           },
         },
         {
           'name': 'preview_widget',
-          'description': '''Preview arbitrary Flutter widget code without creating a test file.
+          'description':
+              '''Preview arbitrary Flutter widget code without creating a test file.
 
 This tool generates a temporary test, runs it to capture the widget rendering,
 and returns the visual output. Perfect for AI-assisted UI development:
@@ -191,24 +202,29 @@ Examples:
             'properties': {
               'widgetCode': {
                 'type': 'string',
-                'description': 'Dart code that evaluates to a Widget (e.g., "Container(color: Colors.red)")',
+                'description':
+                    'Dart code that evaluates to a Widget (e.g., "Container(color: Colors.red)")',
               },
               'imports': {
                 'type': 'array',
                 'items': {'type': 'string'},
-                'description': 'Optional: additional import statements needed (e.g., ["package:my_app/widgets.dart"])',
+                'description':
+                    'Optional: additional import statements needed (e.g., ["package:my_app/widgets.dart"])',
               },
               'projectPath': {
                 'type': 'string',
-                'description': 'Optional: path to Flutter project for running the test. If not provided, uses workspace default.',
+                'description':
+                    'Optional: path to Flutter project for running the test. If not provided, uses workspace default.',
               },
               'width': {
                 'type': 'integer',
-                'description': 'Optional: logical viewport width (default: 800)',
+                'description':
+                    'Optional: logical viewport width (default: 800)',
               },
               'height': {
                 'type': 'integer',
-                'description': 'Optional: logical viewport height (default: 600)',
+                'description':
+                    'Optional: logical viewport height (default: 600)',
               },
               'devicePixelRatio': {
                 'type': 'number',
@@ -286,7 +302,8 @@ Examples:
       // Add text summary
       content.add({
         'type': 'text',
-        'text': '''Test ${result.success ? 'passed' : 'failed'}: ${result.testName}
+        'text':
+            '''Test ${result.success ? 'passed' : 'failed'}: ${result.testName}
 Frames captured: ${result.frames.length}
 Duration: ${result.duration.inMilliseconds}ms
 ${result.error != null ? 'Error: ${result.error}' : ''}
@@ -309,7 +326,8 @@ ${result.frames.isEmpty ? 'No frames were captured. Make sure the test calls pum
         });
         content.add({
           'type': 'text',
-          'text': '(Above: last frame - ${lastFrame.width}x${lastFrame.height}px)',
+          'text':
+              '(Above: last frame - ${lastFrame.width}x${lastFrame.height}px)',
         });
       }
 
@@ -328,7 +346,8 @@ ${result.frames.isEmpty ? 'No frames were captured. Make sure the test calls pum
         'content': [
           {
             'type': 'text',
-            'text': 'No frames available. Run a test first using run_widget_test.',
+            'text':
+                'No frames available. Run a test first using run_widget_test.',
           }
         ],
       });
@@ -347,7 +366,8 @@ ${result.frames.isEmpty ? 'No frames were captured. Make sure the test calls pum
           index = _cachedFrames.length - 1;
           break;
         default:
-          _sendError(id, -32602, 'Invalid index: $indexArg. Use integer, "first", or "last".');
+          _sendError(id, -32602,
+              'Invalid index: $indexArg. Use integer, "first", or "last".');
           return;
       }
     } else if (indexArg is int) {
@@ -366,7 +386,8 @@ ${result.frames.isEmpty ? 'No frames were captured. Make sure the test calls pum
         'content': [
           {
             'type': 'text',
-            'text': 'Frame index out of range. Available frames: 0-${_cachedFrames.length - 1} (total: ${_cachedFrames.length})',
+            'text':
+                'Frame index out of range. Available frames: 0-${_cachedFrames.length - 1} (total: ${_cachedFrames.length})',
           }
         ],
       });
@@ -384,7 +405,8 @@ ${result.frames.isEmpty ? 'No frames were captured. Make sure the test calls pum
       'content': [
         {
           'type': 'text',
-          'text': 'Frame ${index + 1} of ${_cachedFrames.length} (${frame.width}x${frame.height}px)',
+          'text':
+              'Frame ${index + 1} of ${_cachedFrames.length} (${frame.width}x${frame.height}px)',
         },
         {
           'type': 'image',
@@ -401,7 +423,8 @@ ${result.frames.isEmpty ? 'No frames were captured. Make sure the test calls pum
         'content': [
           {
             'type': 'text',
-            'text': 'No frames available. Run a test first using run_widget_test.',
+            'text':
+                'No frames available. Run a test first using run_widget_test.',
           }
         ],
       });
@@ -436,7 +459,8 @@ Use get_frame with index 0-${_cachedFrames.length - 1}, or "first"/"last" to ret
         'content': [
           {
             'type': 'text',
-            'text': 'No frames available. Run a test first using run_widget_test.',
+            'text':
+                'No frames available. Run a test first using run_widget_test.',
           }
         ],
       });
@@ -451,7 +475,8 @@ Use get_frame with index 0-${_cachedFrames.length - 1}, or "first"/"last" to ret
     final content = <Map<String, dynamic>>[
       {
         'type': 'text',
-        'text': 'Returning ${framesToReturn.length} of ${_cachedFrames.length} frames from: $_lastTestName',
+        'text':
+            'Returning ${framesToReturn.length} of ${_cachedFrames.length} frames from: $_lastTestName',
       }
     ];
 
@@ -464,7 +489,8 @@ Use get_frame with index 0-${_cachedFrames.length - 1}, or "first"/"last" to ret
       );
       content.add({
         'type': 'text',
-        'text': 'Frame ${i + 1}/${framesToReturn.length} (${frame.width}x${frame.height}px):',
+        'text':
+            'Frame ${i + 1}/${framesToReturn.length} (${frame.width}x${frame.height}px):',
       });
       content.add({
         'type': 'image',
@@ -543,7 +569,8 @@ $widgetCode
       } else {
         content.add({
           'type': 'text',
-          'text': '\nNo frames captured. Check that the widget code is valid and compiles correctly.',
+          'text':
+              '\nNo frames captured. Check that the widget code is valid and compiles correctly.',
         });
         // Include stderr if available for debugging
         if (result.stderr.isNotEmpty) {
