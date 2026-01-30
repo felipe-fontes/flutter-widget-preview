@@ -7,22 +7,25 @@ export class PreviewPanel {
     private readonly _panel: vscode.WebviewPanel;
     private _port: number;
     private _disposables: vscode.Disposable[] = [];
+    private _onDisposeCallback?: () => void;
 
-    private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, port: number) {
+    private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, port: number, onDispose?: () => void) {
         this._panel = panel;
         this._port = port;
+        this._onDisposeCallback = onDispose;
 
         this._panel.webview.html = this._getHtmlForWebview(port);
 
         this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
     }
 
-    public static createOrShow(extensionUri: vscode.Uri, port: number): void {
+    public static createOrShow(extensionUri: vscode.Uri, port: number, onDispose?: () => void): void {
         const column = vscode.ViewColumn.Beside;
 
         if (PreviewPanel.currentPanel) {
             PreviewPanel.currentPanel._panel.reveal(column);
             PreviewPanel.currentPanel.updatePort(port);
+            PreviewPanel.currentPanel._onDisposeCallback = onDispose;
             return;
         }
 
@@ -36,7 +39,7 @@ export class PreviewPanel {
             }
         );
 
-        PreviewPanel.currentPanel = new PreviewPanel(panel, extensionUri, port);
+        PreviewPanel.currentPanel = new PreviewPanel(panel, extensionUri, port, onDispose);
     }
 
     public updatePort(port: number): void {
@@ -46,6 +49,11 @@ export class PreviewPanel {
 
     public dispose(): void {
         PreviewPanel.currentPanel = undefined;
+
+        // Call the dispose callback to stop the preview runner
+        if (this._onDisposeCallback) {
+            this._onDisposeCallback();
+        }
 
         this._panel.dispose();
 

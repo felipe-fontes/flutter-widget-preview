@@ -86,17 +86,17 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
 }
 ```
 
-**c) Add `preview_binding` Dependency**
+**c) Temporarily Add `preview_binding` Dependency**
 
-The extension adds `preview_binding` as a path dependency to the project's `pubspec.yaml`:
+The extension temporarily modifies the project:
+1. Backs up `pubspec.yaml` and `pubspec.lock` in memory
+2. Adds `preview_binding` as path dependency → runs `flutter pub get`
+3. Runs the test (captures frames via gRPC)
+4. **Immediately after gRPC starts:** Restores both files to exact original content
 
-```yaml
-dev_dependencies:
-  preview_binding:
-    path: /path/to/extension/packages/preview_binding
-```
+Cleanup happens as soon as the test execution completes and the gRPC server is ready—the user's project files are restored while the preview is still viewable. The gRPC server continues serving frames from memory.
 
-Then runs `flutter pub get` to install it.
+This is necessary because `preview_binding` depends on `grpc` and `protobuf` packages for frame streaming.
 
 ### 3. Extension Spawns Two Processes
 
@@ -434,6 +434,12 @@ code --install-extension fontes-widget-viewer-0.0.1.vsix
 - Works with any Flutter project without code changes
 - Can be enabled/disabled via dart-define flag
 
+### Why cleanup after preview?
+- No permanent changes to user's project (files restored immediately after test runs)
+- Cleanup happens when gRPC server starts, not when preview closes
+- User can continue viewing preview while project files are already restored
+- Can't avoid pubspec changes entirely—gRPC/protobuf deps are required for frame streaming
+
 ### Why resolution via dart-defines?
 - No code changes required in user's tests
 - Resolution is set before any test code runs
@@ -442,3 +448,42 @@ code --install-extension fontes-widget-viewer-0.0.1.vsix
 ### Why fit image to available space?
 - Aspect ratio preservation prevents distortion
 - Scale-down only (no upscaling) maintains image quality
+
+## MCP Server for AI Assistants
+
+The extension also provides an **MCP (Model Context Protocol) server** that allows AI coding assistants (Copilot, Claude, etc.) to preview Flutter widgets programmatically.
+
+### How It Works
+
+```
+┌─────────────────────┐     stdio      ┌─────────────────────┐   flutter test  ┌─────────────────────┐
+│   AI Assistant      │ ◀──────────▶   │   MCP Server        │ ──────────────▶ │   Widget Test       │
+│   (Copilot/Claude)  │    JSON-RPC    │   (mcp_preview)     │                 │   (captures PNG)    │
+└─────────────────────┘                └─────────────────────┘                 └─────────────────────┘
+```
+
+### Available Tools
+
+| Tool | Purpose |
+|------|---------|
+| `preview_widget` | Preview arbitrary widget code (AI provides Dart code, gets PNG back) |
+| `run_widget_test` | Run an existing test file and capture frames |
+| `list_frames` | List metadata for all captured frames |
+| `get_frame` | Get a specific frame as base64 PNG |
+| `get_all_frames` | Get all frames (useful for animations) |
+
+### Typical AI Workflow
+
+1. User asks AI to create a widget
+2. AI writes widget code
+3. AI calls `preview_widget` with the code
+4. MCP server generates a temp test, runs it, captures PNG
+5. AI receives image and can verify it matches requirements
+
+### Registration
+
+- **VS Code**: Uses native `vscode.lm.registerMcpServerDefinitionProvider()` API
+- **Cursor**: Deep link prompt (`cursor://anysphere.cursor-deeplink/mcp/install`)
+- **Other IDEs**: Manual config copy to clipboard
+
+The MCP server runs as a shell script that executes `dart run bin/mcp_preview.dart` from the bundled `mcp_preview` package.

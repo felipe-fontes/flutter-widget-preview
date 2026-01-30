@@ -10,6 +10,9 @@ export class PreviewRunner {
     private readonly fontsPath: string;
     private readonly templatesPath: string;
     private injectedConfigPath: string | undefined;
+    private originalPubspecContent: string | undefined;
+    private modifiedPubspecPath: string | undefined;
+    private originalPubspecLockContent: string | undefined;
 
     constructor(
         private readonly extensionPath: string,
@@ -46,12 +49,26 @@ export class PreviewRunner {
 
     private async ensurePreviewBindingDependency(projectRoot: string): Promise<void> {
         const pubspecPath = path.join(projectRoot, 'pubspec.yaml');
+        const pubspecLockPath = path.join(projectRoot, 'pubspec.lock');
         if (!fs.existsSync(pubspecPath)) return;
 
         const content = fs.readFileSync(pubspecPath, 'utf-8');
 
+        // Backup original pubspec.yaml content for restoration
+        this.originalPubspecContent = content;
+        this.modifiedPubspecPath = pubspecPath;
+
+        // Also backup pubspec.lock if it exists
+        if (fs.existsSync(pubspecLockPath)) {
+            this.originalPubspecLockContent = fs.readFileSync(pubspecLockPath, 'utf-8');
+        }
+
         if (content.includes('preview_binding:')) {
             this.outputChannel.appendLine('preview_binding already in pubspec.yaml');
+            // Don't restore if it was already there
+            this.originalPubspecContent = undefined;
+            this.modifiedPubspecPath = undefined;
+            this.originalPubspecLockContent = undefined;
             return;
         }
 
@@ -91,11 +108,44 @@ export class PreviewRunner {
     }
 
     private cleanupInjectedConfig(): void {
+        this.outputChannel.appendLine('Cleaning up injected files...');
+
+        // Remove injected flutter_test_config.dart
         if (this.injectedConfigPath && fs.existsSync(this.injectedConfigPath)) {
-            // Don't delete - user might want to inspect it
-            // fs.unlinkSync(this.injectedConfigPath);
-            this.injectedConfigPath = undefined;
+            try {
+                fs.unlinkSync(this.injectedConfigPath);
+                this.outputChannel.appendLine(`Removed flutter_test_config.dart`);
+            } catch (e) {
+                this.outputChannel.appendLine(`Failed to remove flutter_test_config.dart: ${e}`);
+            }
         }
+        this.injectedConfigPath = undefined;
+
+        // Restore original pubspec.yaml
+        if (this.modifiedPubspecPath && this.originalPubspecContent) {
+            try {
+                fs.writeFileSync(this.modifiedPubspecPath, this.originalPubspecContent);
+                this.outputChannel.appendLine(`Restored original pubspec.yaml`);
+            } catch (e) {
+                this.outputChannel.appendLine(`Failed to restore pubspec.yaml: ${e}`);
+            }
+
+            // Restore original pubspec.lock (must do before clearing modifiedPubspecPath)
+            if (this.originalPubspecLockContent) {
+                const lockPath = this.modifiedPubspecPath.replace('pubspec.yaml', 'pubspec.lock');
+                try {
+                    fs.writeFileSync(lockPath, this.originalPubspecLockContent);
+                    this.outputChannel.appendLine(`Restored original pubspec.lock`);
+                } catch (e) {
+                    this.outputChannel.appendLine(`Failed to restore pubspec.lock: ${e}`);
+                }
+            }
+        }
+
+        // Clear all state
+        this.originalPubspecContent = undefined;
+        this.modifiedPubspecPath = undefined;
+        this.originalPubspecLockContent = undefined;
     }
 
     /**
@@ -173,6 +223,9 @@ export class PreviewRunner {
                     grpcPort = parseInt(portMatch[1], 10);
                     this.outputChannel.appendLine(`\ngRPC server started on port ${grpcPort}`);
                     resolved = true;
+                    // Test execution is done, cleanup injected files now
+                    // The gRPC server will continue serving frames from memory
+                    this.cleanupInjectedConfig();
                     resolve(grpcPort);
                 }
 
@@ -182,6 +235,8 @@ export class PreviewRunner {
                     grpcPort = parseInt(previewMatch[1], 10);
                     this.outputChannel.appendLine(`\nPreview server started on port ${grpcPort}`);
                     resolved = true;
+                    // Test execution is done, cleanup injected files now
+                    this.cleanupInjectedConfig();
                     resolve(grpcPort);
                 }
             });
@@ -200,6 +255,8 @@ export class PreviewRunner {
 
             this.testProcess.on('close', (code: number | null) => {
                 this.outputChannel.appendLine(`Test process exited with code ${code}`);
+                // Cleanup in case it wasn't done yet (e.g., test failed before gRPC started)
+                this.cleanupInjectedConfig();
                 if (!resolved) {
                     resolved = true;
                     if (code === 0) {
@@ -269,6 +326,9 @@ export class PreviewRunner {
     }
 
     stop(): void {
+        // Cleanup injected files first
+        this.cleanupInjectedConfig();
+
         if (this.testProcess) {
             this.testProcess.kill('SIGKILL');
             this.testProcess = undefined;

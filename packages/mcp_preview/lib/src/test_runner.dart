@@ -26,6 +26,47 @@ class TestRunResult {
   });
 }
 
+/// Helper class to track and cleanup injected files
+class _InjectedFiles {
+  String? configPath;
+  String? pubspecPath;
+  String? originalPubspecContent;
+  String? originalPubspecLockContent;
+
+  void cleanup() {
+    // Remove injected flutter_test_config.dart
+    if (configPath != null) {
+      try {
+        final file = File(configPath!);
+        if (file.existsSync()) {
+          file.deleteSync();
+        }
+      } catch (_) {}
+      configPath = null;
+    }
+
+    // Restore original pubspec.yaml
+    if (pubspecPath != null && originalPubspecContent != null) {
+      try {
+        File(pubspecPath!).writeAsStringSync(originalPubspecContent!);
+      } catch (_) {}
+
+      // Restore original pubspec.lock if we backed it up
+      if (originalPubspecLockContent != null) {
+        try {
+          final lockPath =
+              pubspecPath!.replaceAll('pubspec.yaml', 'pubspec.lock');
+          File(lockPath).writeAsStringSync(originalPubspecLockContent!);
+        } catch (_) {}
+      }
+
+      originalPubspecContent = null;
+      originalPubspecLockContent = null;
+      pubspecPath = null;
+    }
+  }
+}
+
 /// Runs Flutter widget tests and captures frames via gRPC
 class TestRunner {
   static const Duration defaultTimeout = Duration(seconds: 40);
@@ -84,6 +125,7 @@ class TestRunner {
   }) async {
     final stopwatch = Stopwatch()..start();
     final frames = <Frame>[];
+    final injected = _InjectedFiles();
 
     // Find project root
     final projectRoot = findProjectRoot(testFilePath);
@@ -97,146 +139,148 @@ class TestRunner {
       );
     }
 
-    // Ensure flutter_test_config.dart exists in the test directory
-    final testDir = p.dirname(testFilePath);
-    final configPath = p.join(testDir, 'flutter_test_config.dart');
-    if (!File(configPath).existsSync()) {
-      // Try to copy from template
-      final templatePath = _findTemplateConfig();
-      if (templatePath != null && File(templatePath).existsSync()) {
-        File(templatePath).copySync(configPath);
-      } else {
+    try {
+      // Setup: inject flutter_test_config.dart and preview_binding dependency
+      final setupResult = await _setupPreviewEnvironment(
+        testFilePath: testFilePath,
+        projectRoot: projectRoot,
+        injected: injected,
+      );
+
+      if (setupResult != null) {
         return TestRunResult(
           frames: [],
           testName: testName ?? p.basename(testFilePath),
           success: false,
-          error:
-              'flutter_test_config.dart not found in test directory and no template available',
+          error: setupResult,
           duration: stopwatch.elapsed,
         );
       }
-    }
 
-    // Build dart-defines
-    final dartDefines = <String>[
-      '--dart-define=ENABLE_PREVIEW=true',
-    ];
+      // Build dart-defines
+      final dartDefines = <String>[
+        '--dart-define=ENABLE_PREVIEW=true',
+      ];
 
-    if (fontsPath != null) {
-      dartDefines.add('--dart-define=PREVIEW_FONTS_PATH=$fontsPath');
-    }
-    if (width != null) {
-      dartDefines.add('--dart-define=PREVIEW_WIDTH=$width');
-    }
-    if (height != null) {
-      dartDefines.add('--dart-define=PREVIEW_HEIGHT=$height');
-    }
-    if (devicePixelRatio != null) {
-      dartDefines
-          .add('--dart-define=PREVIEW_DEVICE_PIXEL_RATIO=$devicePixelRatio');
-    }
-
-    // Build flutter test command
-    final args = [
-      'test',
-      testFilePath,
-      ...dartDefines,
-    ];
-
-    if (testName != null) {
-      args.addAll(['--name', testName]);
-    }
-
-    // Start flutter test process
-    final process = await Process.start(
-      'flutter',
-      args,
-      workingDirectory: projectRoot,
-    );
-
-    // Capture stdout/stderr for debugging
-    final stdoutBuffer = StringBuffer();
-    final stderrBuffer = StringBuffer();
-    PreviewGrpcClient? grpcClient;
-    StreamSubscription<Frame>? frameSubscription;
-
-    // Completer to signal when gRPC connection is ready
-    final grpcConnectedCompleter = Completer<void>();
-    bool grpcConnected = false;
-
-    // Completer to signal when drain is complete (test finished)
-    final drainCompleteCompleter = Completer<void>();
-
-    // Parse stdout for gRPC port and status messages
-    process.stdout
-        .transform(const SystemEncoding().decoder)
-        .transform(const LineSplitter())
-        .listen((line) {
-      stdoutBuffer.writeln(line);
-
-      // Look for GRPC_SERVER_STARTED:<port>
-      final grpcMatch = RegExp(r'GRPC_SERVER_STARTED:(\d+)').firstMatch(line);
-      if (grpcMatch != null && !grpcConnected) {
-        grpcConnected = true;
-        final port = int.parse(grpcMatch.group(1)!);
-
-        // Connect to gRPC immediately and signal when done
-        _connectToGrpc(port, frames).then((result) {
-          grpcClient = result.$1;
-          frameSubscription = result.$2;
-          if (!grpcConnectedCompleter.isCompleted) {
-            grpcConnectedCompleter.complete();
-          }
-        }).catchError((e) {
-          if (!grpcConnectedCompleter.isCompleted) {
-            grpcConnectedCompleter.completeError(e);
-          }
-        });
+      if (fontsPath != null) {
+        dartDefines.add('--dart-define=PREVIEW_FONTS_PATH=$fontsPath');
+      }
+      if (width != null) {
+        dartDefines.add('--dart-define=PREVIEW_WIDTH=$width');
+      }
+      if (height != null) {
+        dartDefines.add('--dart-define=PREVIEW_HEIGHT=$height');
+      }
+      if (devicePixelRatio != null) {
+        dartDefines
+            .add('--dart-define=PREVIEW_DEVICE_PIXEL_RATIO=$devicePixelRatio');
       }
 
-      // Look for PREVIEW_DRAIN_COMPLETE - test is done
-      if (line.contains('PREVIEW_DRAIN_COMPLETE') &&
-          !drainCompleteCompleter.isCompleted) {
-        drainCompleteCompleter.complete();
-      }
-    });
+      // Build flutter test command
+      final args = [
+        'test',
+        testFilePath,
+        ...dartDefines,
+      ];
 
-    process.stderr
-        .transform(const SystemEncoding().decoder)
-        .transform(const LineSplitter())
-        .listen((line) {
-      stderrBuffer.writeln(line);
-    });
-
-    // Wait for drain complete or process exit or timeout
-    try {
-      // Race between: process exit, drain complete signal, or timeout
-      final exitCodeFuture = process.exitCode;
-      final drainFuture = drainCompleteCompleter.future;
-
-      // Wait for either drain complete or process exit
-      await Future.any([
-        exitCodeFuture,
-        drainFuture.then((_) async {
-          // Give a moment for any remaining frames
-          await Future.delayed(const Duration(milliseconds: 500));
-        }),
-      ]).timeout(timeout);
-
-      // Wait for gRPC to be connected (should already be done)
-      if (grpcConnected && !grpcConnectedCompleter.isCompleted) {
-        await grpcConnectedCompleter.future.timeout(const Duration(seconds: 5));
+      if (testName != null) {
+        args.addAll(['--name', testName]);
       }
 
-      // Give a moment for any remaining frames to arrive
-      await Future.delayed(const Duration(milliseconds: 200));
+      // Start flutter test process
+      final process = await Process.start(
+        'flutter',
+        args,
+        workingDirectory: projectRoot,
+      );
 
-      // Cleanup - disconnect gRPC first to allow test to exit
-      await frameSubscription?.cancel();
-      await grpcClient?.disconnect();
+      // Capture stdout/stderr for debugging
+      final stdoutBuffer = StringBuffer();
+      final stderrBuffer = StringBuffer();
+      PreviewGrpcClient? grpcClient;
+      StreamSubscription<Frame>? frameSubscription;
 
-      // Kill the process if it's still running
-      process.kill();
+      // Completer to signal when gRPC connection is ready
+      final grpcConnectedCompleter = Completer<void>();
+      bool grpcConnected = false;
+
+      // Completer to signal when drain is complete (test finished)
+      final drainCompleteCompleter = Completer<void>();
+
+      // Parse stdout for gRPC port and status messages
+      process.stdout
+          .transform(const SystemEncoding().decoder)
+          .transform(const LineSplitter())
+          .listen((line) {
+        stdoutBuffer.writeln(line);
+
+        // Look for GRPC_SERVER_STARTED:<port>
+        final grpcMatch = RegExp(r'GRPC_SERVER_STARTED:(\d+)').firstMatch(line);
+        if (grpcMatch != null && !grpcConnected) {
+          grpcConnected = true;
+          final port = int.parse(grpcMatch.group(1)!);
+
+          // Connect to gRPC immediately and signal when done
+          _connectToGrpc(port, frames).then((result) {
+            grpcClient = result.$1;
+            frameSubscription = result.$2;
+            if (!grpcConnectedCompleter.isCompleted) {
+              grpcConnectedCompleter.complete();
+            }
+          }).catchError((e) {
+            if (!grpcConnectedCompleter.isCompleted) {
+              grpcConnectedCompleter.completeError(e);
+            }
+          });
+        }
+
+        // Look for PREVIEW_DRAIN_COMPLETE - test is done
+        if (line.contains('PREVIEW_DRAIN_COMPLETE') &&
+            !drainCompleteCompleter.isCompleted) {
+          drainCompleteCompleter.complete();
+        }
+      });
+
+      process.stderr
+          .transform(const SystemEncoding().decoder)
+          .transform(const LineSplitter())
+          .listen((line) {
+        stderrBuffer.writeln(line);
+      });
+
+      try {
+        // Wait for drain complete or process exit or timeout
+        // Race between: process exit, drain complete signal, or timeout
+        final exitCodeFuture = process.exitCode;
+        final drainFuture = drainCompleteCompleter.future;
+
+        // Wait for either drain complete or process exit
+        await Future.any([
+          exitCodeFuture,
+          drainFuture.then((_) async {
+            // Give a moment for any remaining frames
+            await Future.delayed(const Duration(milliseconds: 500));
+          }),
+        ]).timeout(timeout);
+
+        // Wait for gRPC to be connected (should already be done)
+        if (grpcConnected && !grpcConnectedCompleter.isCompleted) {
+          await grpcConnectedCompleter.future
+              .timeout(const Duration(seconds: 5));
+        }
+
+        // Give a moment for any remaining frames to arrive
+        await Future.delayed(const Duration(milliseconds: 200));
+      } on TimeoutException {
+        // Continue to cleanup
+      } finally {
+        // Cleanup - disconnect gRPC first to allow test to exit
+        await frameSubscription?.cancel();
+        await grpcClient?.disconnect();
+
+        // Kill the process if it's still running
+        process.kill();
+      }
 
       stopwatch.stop();
 
@@ -252,23 +296,137 @@ class TestRunner {
         stdout: stdoutBuffer.toString(),
         stderr: stderrBuffer.toString(),
       );
-    } on TimeoutException {
-      process.kill();
-      await frameSubscription?.cancel();
-      await grpcClient?.disconnect();
+    } catch (e) {
       stopwatch.stop();
 
       return TestRunResult(
         frames: frames,
         testName: testName ?? p.basename(testFilePath),
         success: false,
-        error:
-            'Test timed out after ${timeout.inSeconds} seconds\nstdout: ${stdoutBuffer.toString()}',
+        error: 'Test failed: $e',
         duration: stopwatch.elapsed,
-        stdout: stdoutBuffer.toString(),
-        stderr: stderrBuffer.toString(),
       );
+    } finally {
+      // Always cleanup injected files
+      injected.cleanup();
     }
+  }
+
+  /// Setup the preview environment by injecting flutter_test_config.dart and
+  /// adding preview_binding as a dependency. Returns an error message if setup
+  /// fails, or null if successful.
+  static Future<String?> _setupPreviewEnvironment({
+    required String testFilePath,
+    required String projectRoot,
+    required _InjectedFiles injected,
+  }) async {
+    final testDir = p.dirname(testFilePath);
+    final configPath = p.join(testDir, 'flutter_test_config.dart');
+    final pubspecPath = p.join(projectRoot, 'pubspec.yaml');
+    final pubspecLockPath = p.join(projectRoot, 'pubspec.lock');
+
+    // Check if flutter_test_config.dart already exists
+    final configExists = File(configPath).existsSync();
+    bool needToRemoveConfig = false;
+
+    if (!configExists) {
+      // Try to copy from template
+      final templatePath = _findTemplateConfig();
+      if (templatePath != null && File(templatePath).existsSync()) {
+        File(templatePath).copySync(configPath);
+        injected.configPath = configPath;
+        needToRemoveConfig = true;
+      } else {
+        return 'flutter_test_config.dart not found in test directory and no template available';
+      }
+    }
+
+    // Check if we need to add preview_binding dependency
+    final pubspecFile = File(pubspecPath);
+    if (!pubspecFile.existsSync()) {
+      return 'pubspec.yaml not found in project root';
+    }
+
+    final pubspecContent = pubspecFile.readAsStringSync();
+
+    // Check if preview_binding is already a dependency
+    if (!pubspecContent.contains('preview_binding:')) {
+      // Backup original pubspec files
+      injected.pubspecPath = pubspecPath;
+      injected.originalPubspecContent = pubspecContent;
+
+      // Backup pubspec.lock if it exists
+      if (File(pubspecLockPath).existsSync()) {
+        injected.originalPubspecLockContent =
+            File(pubspecLockPath).readAsStringSync();
+      }
+
+      // Find the preview_binding package path
+      final previewBindingPath = _findPreviewBindingPath();
+      if (previewBindingPath == null) {
+        return 'Could not find preview_binding package';
+      }
+
+      // Add preview_binding as a dev dependency
+      String newPubspecContent;
+      final devDepsMatch =
+          RegExp(r'dev_dependencies:\s*\n').firstMatch(pubspecContent);
+      if (devDepsMatch != null) {
+        final insertPos = devDepsMatch.end;
+        newPubspecContent = '${pubspecContent.substring(0, insertPos)}'
+            '  preview_binding:\n    path: $previewBindingPath\n'
+            '${pubspecContent.substring(insertPos)}';
+      } else {
+        // No dev_dependencies section - add it
+        newPubspecContent = '$pubspecContent'
+            '\ndev_dependencies:\n  preview_binding:\n    path: $previewBindingPath\n';
+      }
+
+      pubspecFile.writeAsStringSync(newPubspecContent);
+
+      // Run flutter pub get
+      final pubGetResult = await Process.run(
+        'flutter',
+        ['pub', 'get'],
+        workingDirectory: projectRoot,
+      );
+
+      if (pubGetResult.exitCode != 0) {
+        // Restore original pubspec on failure
+        injected.cleanup();
+        return 'flutter pub get failed: ${pubGetResult.stderr}';
+      }
+    } else {
+      // preview_binding already exists, don't cleanup pubspec
+      // But we might still need to cleanup config if we created it
+      if (!needToRemoveConfig) {
+        injected.configPath = null;
+      }
+    }
+
+    return null; // Success
+  }
+
+  /// Find the preview_binding package path
+  static String? _findPreviewBindingPath() {
+    final packageRoot = findPackageRoot();
+    if (packageRoot == null) return null;
+
+    final possiblePaths = [
+      // Sibling package
+      p.join(packageRoot, '..', 'preview_binding'),
+      // Extension packages
+      p.join(
+          packageRoot, '..', '..', 'extension', 'packages', 'preview_binding'),
+    ];
+
+    for (final path in possiblePaths) {
+      final normalized = p.normalize(path);
+      if (File(p.join(normalized, 'pubspec.yaml')).existsSync()) {
+        return normalized;
+      }
+    }
+    return null;
   }
 
   /// Connect to the test's gRPC server and start collecting frames

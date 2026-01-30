@@ -72,7 +72,11 @@ export function activate(context: vscode.ExtensionContext): void {
                         if (openInBrowser) {
                             vscode.env.openExternal(vscode.Uri.parse(`http://localhost:${webPort}`));
                         } else {
-                            PreviewPanel.createOrShow(context.extensionUri, webPort);
+                            PreviewPanel.createOrShow(context.extensionUri, webPort, () => {
+                                // Stop the preview runner when the webview panel is closed
+                                previewRunner?.stop();
+                                outputChannel.appendLine('Preview panel closed, stopping preview');
+                            });
                         }
 
                         outputChannel.appendLine(`Preview running at http://localhost:${webPort}`);
