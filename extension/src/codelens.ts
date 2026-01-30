@@ -19,7 +19,7 @@ export class CodeLensProvider implements vscode.CodeLensProvider {
             codeLenses.push(
                 new vscode.CodeLens(range, {
                     title: '▶ Preview',
-                    command: 'fontesWidgetViewer.previewTest',
+                    command: 'flutterPreview.previewTest',
                     arguments: [
                         {
                             file: document.uri.fsPath,

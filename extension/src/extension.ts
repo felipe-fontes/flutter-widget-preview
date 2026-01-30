@@ -49,14 +49,14 @@ export function activate(context: vscode.ExtensionContext): void {
     // Register preview command
     context.subscriptions.push(
         vscode.commands.registerCommand(
-            'fontesWidgetViewer.previewTest',
+            'flutterPreview.previewTest',
             async (args: { file: string; testName: string; line: number }) => {
                 outputChannel.show();
                 outputChannel.appendLine(`Starting preview for: ${args.testName}`);
                 outputChannel.appendLine(`Resolution: ${currentResolution.name} (${currentResolution.width}×${currentResolution.height} @${currentResolution.devicePixelRatio}x)`);
 
                 try {
-                    const config = vscode.workspace.getConfiguration('fontesWidgetViewer');
+                    const config = vscode.workspace.getConfiguration('flutterPreview');
                     const webPort = config.get<number>('webPort', 9090);
                     const openInBrowser = config.get<boolean>('openInBrowser', false);
 
@@ -91,7 +91,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     // Register stop command
     context.subscriptions.push(
-        vscode.commands.registerCommand('fontesWidgetViewer.stopPreview', () => {
+        vscode.commands.registerCommand('flutterPreview.stopPreview', () => {
             previewRunner?.stop();
             PreviewPanel.currentPanel?.dispose();
             outputChannel.appendLine('Preview stopped');
@@ -100,7 +100,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     // Register resolution selection command
     context.subscriptions.push(
-        vscode.commands.registerCommand('fontesWidgetViewer.selectResolution', async () => {
+        vscode.commands.registerCommand('flutterPreview.selectResolution', async () => {
             // Build quick pick items grouped by category
             const categories = ['iOS', 'Android', 'Desktop'] as const;
             const items: (vscode.QuickPickItem & { resolution?: DeviceResolution })[] = [];

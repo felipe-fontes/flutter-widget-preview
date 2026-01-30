@@ -107,6 +107,62 @@ async function promptMcpInstall(context: vscode.ExtensionContext, appName: strin
 }
 
 /**
+ * Generate MCP configuration JSON for manual setup
+ */
+function getMcpConfigJson(extensionPath: string): { scriptPath: string; config: object } {
+    const scriptPath = createMcpScript(extensionPath);
+    const config = {
+        "flutter-preview": {
+            "type": "stdio",
+            "command": scriptPath
+        }
+    };
+    return { scriptPath, config };
+}
+
+/**
+ * Show MCP setup instructions to users
+ */
+async function showMcpSetupInstructions(context: vscode.ExtensionContext): Promise<void> {
+    const { scriptPath, config } = getMcpConfigJson(context.extensionPath);
+
+    const options = ['Copy MCP Config', 'Open MCP Settings', 'Learn More'];
+    const selected = await vscode.window.showInformationMessage(
+        'To use Flutter Preview with GitHub Copilot, you need to configure MCP.',
+        ...options
+    );
+
+    if (selected === 'Copy MCP Config') {
+        await vscode.env.clipboard.writeText(JSON.stringify(config, null, 2));
+        vscode.window.showInformationMessage(
+            'MCP config copied! Add it to your .vscode/mcp.json or VS Code MCP settings.'
+        );
+    } else if (selected === 'Open MCP Settings') {
+        // Try to open the MCP settings file
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (workspaceFolder) {
+            const mcpJsonPath = vscode.Uri.joinPath(workspaceFolder.uri, '.vscode', 'mcp.json');
+            try {
+                await vscode.workspace.fs.stat(mcpJsonPath);
+                await vscode.window.showTextDocument(mcpJsonPath);
+            } catch {
+                // File doesn't exist, create it
+                const initialConfig = {
+                    servers: config
+                };
+                await vscode.workspace.fs.writeFile(
+                    mcpJsonPath,
+                    Buffer.from(JSON.stringify(initialConfig, null, 2))
+                );
+                await vscode.window.showTextDocument(mcpJsonPath);
+            }
+        }
+    } else if (selected === 'Learn More') {
+        vscode.env.openExternal(vscode.Uri.parse('https://code.visualstudio.com/docs/copilot/chat/mcp-servers'));
+    }
+}
+
+/**
  * Register the MCP server provider with VS Code.
  */
 export function registerMcpServer(context: vscode.ExtensionContext): void {
@@ -117,7 +173,14 @@ export function registerMcpServer(context: vscode.ExtensionContext): void {
 
     console.log(`Flutter Preview MCP: Detected appName="${appName}", isVsCode=${isVsCode}`);
 
-    // For VS Code: try to use the native API
+    // Register a command to help users set up MCP manually
+    context.subscriptions.push(
+        vscode.commands.registerCommand('flutterPreview.setupMcp', () => {
+            showMcpSetupInstructions(context);
+        })
+    );
+
+    // For VS Code: try to use the native API (only works in Insiders with proposed APIs)
     if (isVsCode) {
         const lmApi = (vscode as any).lm;
         if (lmApi && typeof lmApi.registerMcpServerDefinitionProvider === 'function') {
@@ -134,6 +197,8 @@ export function registerMcpServer(context: vscode.ExtensionContext): void {
             } catch (e) {
                 console.warn('Flutter Preview MCP: Failed to register with VS Code API:', e);
             }
+        } else {
+            console.log('Flutter Preview MCP: VS Code MCP API not available (requires VS Code Insiders or newer version)');
         }
     }
 
