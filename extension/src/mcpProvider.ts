@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import { detectFlutterSdkPath } from './flutter';
 
 /**
  * Create the shell script that runs the MCP server
@@ -8,11 +9,17 @@ import * as fs from 'fs';
 function createMcpScript(extensionPath: string): string {
     const mcpPackagePath = path.join(extensionPath, 'packages', 'mcp_preview');
     const fontsPath = path.join(extensionPath, 'fonts');
+    const flutterSdkPath = detectFlutterSdkPath();
 
-    const scriptContent = `#!/bin/bash
+    let scriptContent = `#!/bin/bash
 cd "${mcpPackagePath}"
-exec dart run bin/mcp_preview.dart --fonts-path="${fontsPath}" "$@"
-`;
+exec dart run bin/mcp_preview.dart --fonts-path="${fontsPath}"`;
+
+    if (flutterSdkPath) {
+        scriptContent += ` --flutter-sdk-path="${flutterSdkPath}"`;
+    }
+
+    scriptContent += ' "$@"\n';
 
     const scriptDir = path.join(extensionPath, '.mcp-scripts');
     if (!fs.existsSync(scriptDir)) {

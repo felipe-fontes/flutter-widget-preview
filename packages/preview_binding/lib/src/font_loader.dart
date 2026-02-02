@@ -11,6 +11,9 @@ enum FontLocation {
 
   /// Font from the macOS system fonts
   macSystem,
+
+  /// Font from the Flutter SDK
+  flutterSdk,
 }
 
 /// Represents a font to load with its file and family names.
@@ -23,9 +26,14 @@ class PreviewFont {
 }
 
 /// System fonts to load for proper rendering.
-/// Includes Roboto (Material default) and SF fonts (Cupertino default).
+/// Includes Roboto (Material default), MaterialIcons, and SF fonts (Cupertino default).
 const _systemFonts = [
   PreviewFont(FontLocation.preview, 'Roboto-Regular.ttf', ['Roboto']),
+  PreviewFont(
+    FontLocation.flutterSdk,
+    'bin/cache/artifacts/material_fonts/MaterialIcons-Regular.otf',
+    ['MaterialIcons'],
+  ),
   PreviewFont(
     FontLocation.macSystem,
     'SFNS.ttf',
@@ -50,9 +58,12 @@ const _systemFonts = [
 /// This loads:
 /// 1. All fonts declared in the app's FontManifest.json
 /// 2. System fonts (Roboto, SF fonts) from the extension's fonts folder
+/// 3. MaterialIcons font from the Flutter SDK
 ///
 /// [fontsPath] is the path to the extension's fonts folder containing Roboto-Regular.ttf
-Future<void> loadPreviewFonts(String fontsPath) async {
+/// [flutterSdkPath] is the path to the Flutter SDK root (optional, for MaterialIcons)
+Future<void> loadPreviewFonts(String fontsPath,
+    {String? flutterSdkPath}) async {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   // Load app-declared fonts from FontManifest.json
@@ -83,15 +94,29 @@ Future<void> loadPreviewFonts(String fontsPath) async {
   }
 
   // Load system fonts
-  await _loadSystemFonts(fontsPath);
+  await _loadSystemFonts(fontsPath, flutterSdkPath: flutterSdkPath);
 }
 
-/// Loads system fonts from the extension's fonts folder and macOS system fonts.
-Future<void> _loadSystemFonts(String fontsPath) async {
+/// Loads system fonts from the extension's fonts folder, Flutter SDK, and macOS system fonts.
+Future<void> _loadSystemFonts(String fontsPath,
+    {String? flutterSdkPath}) async {
   for (final font in _systemFonts) {
-    final path = font.location == FontLocation.preview
-        ? '$fontsPath/${font.file}'
-        : '/System/Library/Fonts/${font.file}';
+    String path;
+    switch (font.location) {
+      case FontLocation.preview:
+        path = '$fontsPath/${font.file}';
+        break;
+      case FontLocation.macSystem:
+        path = '/System/Library/Fonts/${font.file}';
+        break;
+      case FontLocation.flutterSdk:
+        if (flutterSdkPath == null) {
+          debugPrint('Flutter SDK path not provided, skipping ${font.file}');
+          continue;
+        }
+        path = '$flutterSdkPath/${font.file}';
+        break;
+    }
 
     await _loadFileSystemFont(path, font.families);
   }

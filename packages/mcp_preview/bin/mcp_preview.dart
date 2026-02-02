@@ -13,14 +13,20 @@ import 'package:mcp_preview/mcp_preview.dart';
 ///   dart run mcp_preview [options]
 ///
 /// Options:
-///   --fonts-path    Path to fonts directory for consistent rendering
-///   --help          Show this help message
+///   --fonts-path         Path to fonts directory for consistent rendering
+///   --flutter-sdk-path   Path to Flutter SDK root (for MaterialIcons font)
+///   --help               Show this help message
 void main(List<String> args) async {
   final parser = ArgParser()
     ..addOption(
       'fonts-path',
       abbr: 'f',
       help: 'Path to fonts directory for consistent rendering',
+    )
+    ..addOption(
+      'flutter-sdk-path',
+      abbr: 's',
+      help: 'Path to Flutter SDK root (for MaterialIcons font)',
     )
     ..addFlag(
       'help',
@@ -38,7 +44,9 @@ void main(List<String> args) async {
     }
 
     final fontsPath = results['fonts-path'] as String?;
-    final server = McpServer(fontsPath: fontsPath);
+    final flutterSdkPath = results['flutter-sdk-path'] as String?;
+    final server =
+        McpServer(fontsPath: fontsPath, flutterSdkPath: flutterSdkPath);
 
     // Disable stdout buffering for real-time communication
     stdout.nonBlocking;

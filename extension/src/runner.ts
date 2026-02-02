@@ -3,12 +3,14 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { spawn, ChildProcess, execSync } from 'child_process';
 import { DeviceResolution } from './resolutions';
+import { detectFlutterSdkPath } from './flutter';
 
 export class PreviewRunner {
     private testProcess: ChildProcess | undefined;
     private viewerProcess: ChildProcess | undefined;
     private readonly fontsPath: string;
     private readonly templatesPath: string;
+    private flutterSdkPath: string | undefined;
     private injectedConfigPath: string | undefined;
     private originalPubspecContent: string | undefined;
     private modifiedPubspecPath: string | undefined;
@@ -20,6 +22,12 @@ export class PreviewRunner {
     ) {
         this.fontsPath = path.join(extensionPath, 'fonts');
         this.templatesPath = path.join(extensionPath, 'templates');
+        this.flutterSdkPath = detectFlutterSdkPath();
+        if (this.flutterSdkPath) {
+            this.outputChannel.appendLine(`Flutter SDK: ${this.flutterSdkPath}`);
+        } else {
+            this.outputChannel.appendLine('Could not detect Flutter SDK path - MaterialIcons may not render');
+        }
     }
 
     private async injectTestConfig(testDir: string, projectRoot: string): Promise<void> {
@@ -188,6 +196,9 @@ export class PreviewRunner {
         this.outputChannel.appendLine(`File: ${testFile}`);
         this.outputChannel.appendLine(`CWD: ${projectRoot}`);
         this.outputChannel.appendLine(`Fonts path: ${this.fontsPath}`);
+        if (this.flutterSdkPath) {
+            this.outputChannel.appendLine(`Flutter SDK: ${this.flutterSdkPath}`);
+        }
         this.outputChannel.appendLine(`Resolution: ${resolution.name} - ${resolution.width}×${resolution.height} logical, ${physicalWidth}×${physicalHeight} physical @${resolution.devicePixelRatio}x`);
 
         return new Promise((resolve, reject) => {
@@ -201,6 +212,11 @@ export class PreviewRunner {
                 `--dart-define=PREVIEW_HEIGHT=${resolution.height}`,
                 `--dart-define=PREVIEW_DEVICE_PIXEL_RATIO=${resolution.devicePixelRatio}`,
             ];
+
+            // Add Flutter SDK path if available
+            if (this.flutterSdkPath) {
+                args.push(`--dart-define=PREVIEW_FLUTTER_SDK_PATH=${this.flutterSdkPath}`);
+            }
 
             this.outputChannel.appendLine(`Command: flutter ${args.join(' ')}`);
 

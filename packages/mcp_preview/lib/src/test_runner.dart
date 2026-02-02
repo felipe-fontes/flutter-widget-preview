@@ -111,6 +111,7 @@ class TestRunner {
   /// [testName] - Optional specific test name to run (uses --name flag)
   /// [timeout] - Maximum time to wait for test completion (default 40s)
   /// [fontsPath] - Optional path to fonts directory for consistent rendering
+  /// [flutterSdkPath] - Optional path to Flutter SDK root (for MaterialIcons font)
   /// [width] - Optional logical width for the test viewport
   /// [height] - Optional logical height for the test viewport
   /// [devicePixelRatio] - Optional device pixel ratio (default 1.0)
@@ -119,6 +120,7 @@ class TestRunner {
     String? testName,
     Duration timeout = defaultTimeout,
     String? fontsPath,
+    String? flutterSdkPath,
     int? width,
     int? height,
     double? devicePixelRatio,
@@ -164,6 +166,10 @@ class TestRunner {
 
       if (fontsPath != null) {
         dartDefines.add('--dart-define=PREVIEW_FONTS_PATH=$fontsPath');
+      }
+      if (flutterSdkPath != null) {
+        dartDefines
+            .add('--dart-define=PREVIEW_FLUTTER_SDK_PATH=$flutterSdkPath');
       }
       if (width != null) {
         dartDefines.add('--dart-define=PREVIEW_WIDTH=$width');
@@ -486,6 +492,7 @@ class TestRunner {
     String? projectPath,
     Duration timeout = defaultTimeout,
     String? fontsPath,
+    String? flutterSdkPath,
     int? width,
     int? height,
     double? devicePixelRatio,
@@ -557,6 +564,7 @@ void main() {
         testName: 'MCP Preview Widget',
         timeout: timeout,
         fontsPath: fontsPath,
+        flutterSdkPath: flutterSdkPath,
         width: width,
         height: height,
         devicePixelRatio: devicePixelRatio,

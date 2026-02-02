@@ -25,7 +25,10 @@ class McpServer {
   /// Path to fonts directory for consistent rendering
   final String? fontsPath;
 
-  McpServer({this.fontsPath});
+  /// Path to Flutter SDK root (for MaterialIcons font)
+  final String? flutterSdkPath;
+
+  McpServer({this.fontsPath, this.flutterSdkPath});
 
   /// Start the MCP server (reads from stdin, writes to stdout)
   Future<void> run() async {
@@ -285,6 +288,7 @@ Examples:
         testFilePath: testFile,
         testName: testName,
         fontsPath: fontsPath,
+        flutterSdkPath: flutterSdkPath,
         width: width ?? 800,
         height: height ?? 600,
         devicePixelRatio: devicePixelRatio ?? 1.0,
@@ -521,6 +525,7 @@ Use get_frame with index 0-${_cachedFrames.length - 1}, or "first"/"last" to ret
         imports: imports,
         projectPath: projectPath,
         fontsPath: fontsPath,
+        flutterSdkPath: flutterSdkPath,
         width: width ?? 800,
         height: height ?? 600,
         devicePixelRatio: devicePixelRatio ?? 1.0,

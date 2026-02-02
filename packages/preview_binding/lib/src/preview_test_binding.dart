@@ -20,6 +20,12 @@ const _fontsPath = String.fromEnvironment(
   defaultValue: '',
 );
 
+/// Path to the Flutter SDK root, passed via --dart-define
+const _flutterSdkPath = String.fromEnvironment(
+  'PREVIEW_FLUTTER_SDK_PATH',
+  defaultValue: '',
+);
+
 /// Preview width in logical pixels, passed via --dart-define
 const _previewWidth = int.fromEnvironment(
   'PREVIEW_WIDTH',
@@ -129,7 +135,11 @@ class PreviewTestBinding extends TestWidgetsFlutterBinding
   Future<void> _loadFontsAsync() async {
     try {
       debugPrint('Loading preview fonts from: $_fontsPath');
-      await loadPreviewFonts(_fontsPath);
+      if (_flutterSdkPath.isNotEmpty) {
+        debugPrint('Flutter SDK path: $_flutterSdkPath');
+      }
+      await loadPreviewFonts(_fontsPath,
+          flutterSdkPath: _flutterSdkPath.isEmpty ? null : _flutterSdkPath);
       _fontsLoaded = true;
       debugPrint('Preview fonts loaded successfully');
     } catch (e) {
@@ -147,13 +157,19 @@ class PreviewTestBinding extends TestWidgetsFlutterBinding
   /// Loads fonts for proper rendering. Usually not needed - fonts load automatically.
   ///
   /// [fontsPath] is optional - if not provided, uses PREVIEW_FONTS_PATH dart-define.
-  Future<void> loadFonts([String? fontsPath]) async {
+  /// [flutterSdkPath] is optional - if not provided, uses PREVIEW_FLUTTER_SDK_PATH dart-define.
+  Future<void> loadFonts([String? fontsPath, String? flutterSdkPath]) async {
     if (_fontsLoaded) return;
 
     final path = fontsPath ?? _fontsPath;
+    final sdkPath =
+        flutterSdkPath ?? (_flutterSdkPath.isEmpty ? null : _flutterSdkPath);
     if (path.isNotEmpty) {
       debugPrint('Loading preview fonts from: $path');
-      await loadPreviewFonts(path);
+      if (sdkPath != null) {
+        debugPrint('Flutter SDK path: $sdkPath');
+      }
+      await loadPreviewFonts(path, flutterSdkPath: sdkPath);
       _fontsLoaded = true;
       debugPrint('Preview fonts loaded successfully');
     } else {

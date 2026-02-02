@@ -5,8 +5,18 @@ out/
 # Synced packages (auto-generated from ../packages/)
 packages/
 
+# Dependencies
+node_modules/
+
 # TypeScript
 *.tsbuildinfo
+
+# Test
+coverage/
+.nyc_output/
+
+# MCP scripts (auto-generated)
+.mcp-scripts/
 
 # macOS
 .DS_Store

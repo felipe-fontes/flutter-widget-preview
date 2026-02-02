@@ -113,6 +113,7 @@
     "build": "npm run sync-packages && npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
+    "test": "mocha --require ts-node/register 'src/test/**/*.test.ts'",
     "package": "npm run sync-packages && npm run compile && npx @vscode/vsce package --allow-missing-repository",
     "publish:vsce": "npx @vscode/vsce publish",
     "publish:ovsx": "npx ovsx publish",
@@ -121,8 +122,11 @@
     "publish:minor": "npm run sync-packages && npm run compile && npx @vscode/vsce publish minor && npm run publish:ovsx"
   },
   "devDependencies": {
+    "@types/mocha": "^10.0.0",
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.74.0",
+    "mocha": "^10.0.0",
+    "ts-node": "^10.9.0",
     "typescript": "^5.0.0"
   }
 }
