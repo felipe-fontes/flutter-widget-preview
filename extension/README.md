@@ -1,8 +1,8 @@
-# Flutter Widget Preview
+# Flutter Widget Test Preview
 
-**Real-time widget testing for Flutter — see your UI as you build it.**
+**Real-time visual testing for Flutter — see your widgets render as you test.**
 
-Flutter Widget Preview lets you **see your widget tests render in real-time**. No more running tests blind — watch your widgets come to life frame by frame.
+Flutter Widget Test Preview lets you **see your widget tests render in real-time**. No more running tests blind — watch your widgets come to life frame by frame.
 
 ## Features
 
