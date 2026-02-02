@@ -67,8 +67,8 @@ describe('detectFlutterSdkPath', () => {
             const deps = createMockDeps({
                 env: {},
                 execSync: () => '/usr/local/bin/flutter\n',
-                realpathSync: (p) => p === '/usr/local/bin/flutter' 
-                    ? '/opt/flutter/bin/flutter' 
+                realpathSync: (p) => p === '/usr/local/bin/flutter'
+                    ? '/opt/flutter/bin/flutter'
                     : p,
                 existsSync: (p) => p === '/opt/flutter/bin/flutter',
             });
@@ -81,8 +81,8 @@ describe('detectFlutterSdkPath', () => {
             const deps = createMockDeps({
                 env: {},
                 execSync: () => '/home/user/.local/bin/flutter',
-                realpathSync: (p) => p === '/home/user/.local/bin/flutter' 
-                    ? '/home/user/development/flutter-stable/bin/flutter' 
+                realpathSync: (p) => p === '/home/user/.local/bin/flutter'
+                    ? '/home/user/development/flutter-stable/bin/flutter'
                     : p,
                 existsSync: (p) => p === '/home/user/development/flutter-stable/bin/flutter',
             });
@@ -132,8 +132,8 @@ describe('detectFlutterSdkPath', () => {
                 env: { HOME: '/home/user' },
                 execSync: () => { throw new Error('not found'); },
                 existsSync: (p) => p === '/home/user/fvm/default/bin/flutter',
-                realpathSync: (p) => p === '/home/user/fvm/default' 
-                    ? '/home/user/fvm/versions/3.19.0' 
+                realpathSync: (p) => p === '/home/user/fvm/default'
+                    ? '/home/user/fvm/versions/3.19.0'
                     : p,
             });
 
@@ -146,8 +146,8 @@ describe('detectFlutterSdkPath', () => {
                 env: { HOME: '/Users/John Smith' },
                 execSync: () => { throw new Error('not found'); },
                 existsSync: (p) => p === '/Users/John Smith/fvm/default/bin/flutter',
-                realpathSync: (p) => p === '/Users/John Smith/fvm/default' 
-                    ? '/Users/John Smith/fvm/versions/stable' 
+                realpathSync: (p) => p === '/Users/John Smith/fvm/default'
+                    ? '/Users/John Smith/fvm/versions/stable'
                     : p,
             });
 
@@ -160,7 +160,7 @@ describe('detectFlutterSdkPath', () => {
         it('should prefer FLUTTER_ROOT over which flutter', () => {
             const deps = createMockDeps({
                 env: { FLUTTER_ROOT: '/priority/flutter' },
-                existsSync: (p) => 
+                existsSync: (p) =>
                     p === '/priority/flutter/bin/flutter' ||
                     p === '/which/flutter/bin/flutter',
                 execSync: () => '/which/flutter/bin/flutter',
@@ -174,7 +174,7 @@ describe('detectFlutterSdkPath', () => {
         it('should prefer which flutter over FVM', () => {
             const deps = createMockDeps({
                 env: { HOME: '/home/user' },
-                existsSync: (p) => 
+                existsSync: (p) =>
                     p === '/which/flutter/bin/flutter' ||
                     p === '/home/user/fvm/default/bin/flutter',
                 execSync: () => '/which/flutter/bin/flutter',
