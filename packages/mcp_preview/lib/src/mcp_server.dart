@@ -30,6 +30,42 @@ class McpServer {
 
   McpServer({this.fontsPath, this.flutterSdkPath});
 
+  static const int _maxTextChunkChars = 20000;
+
+  void _appendTextChunks(
+    List<Map<String, dynamic>> content, {
+    required String title,
+    required String text,
+  }) {
+    if (text.isEmpty) return;
+
+    var start = 0;
+    var chunkIndex = 1;
+    final totalChunks = (text.length / _maxTextChunkChars).ceil();
+
+    while (start < text.length) {
+      var end = start + _maxTextChunkChars;
+      if (end > text.length) end = text.length;
+
+      // Prefer splitting on a newline near the end to keep log lines intact.
+      if (end < text.length) {
+        final newline = text.lastIndexOf('\n', end - 1);
+        if (newline > start + (_maxTextChunkChars ~/ 2)) {
+          end = newline + 1;
+        }
+      }
+
+      final chunk = text.substring(start, end);
+      content.add({
+        'type': 'text',
+        'text': '[$title ${chunkIndex}/${totalChunks}]\n$chunk',
+      });
+
+      start = end;
+      chunkIndex++;
+    }
+  }
+
   /// Start the MCP server (reads from stdin, writes to stdout)
   Future<void> run() async {
     // Read JSON-RPC messages from stdin
@@ -96,6 +132,9 @@ class McpServer {
             
 This tool executes a Flutter widget test with preview enabled, capturing a PNG image
 for each pump() call. Returns the number of frames captured and the test result.
+
+Also returns captured `print()`/`debugPrint()` output from the test execution
+so the AI can see application logs without dumping the full Flutter tool output.
 
 Use this to visually verify widget rendering during test execution.''',
           'inputSchema': {
@@ -194,6 +233,8 @@ and returns the visual output. Perfect for AI-assisted UI development:
 1. AI creates widget code based on user requirements or design mockups
 2. AI calls preview_widget to see how it renders
 3. AI can compare the result to design and iterate
+
+Also returns captured `print()`/`debugPrint()` output from the test execution.
 
 The widget code should be a valid Dart expression that returns a Widget.
 Examples:
@@ -334,6 +375,9 @@ ${result.frames.isEmpty ? 'No frames were captured. Make sure the test calls pum
               '(Above: last frame - ${lastFrame.width}x${lastFrame.height}px)',
         });
       }
+
+      // Include only user/application prints from the test run.
+      _appendTextChunks(content, title: 'PRINTS', text: result.prints);
 
       _sendResult(id, {
         'content': content,
@@ -577,14 +621,10 @@ $widgetCode
           'text':
               '\nNo frames captured. Check that the widget code is valid and compiles correctly.',
         });
-        // Include stderr if available for debugging
-        if (result.stderr.isNotEmpty) {
-          content.add({
-            'type': 'text',
-            'text': '\nTest output:\n${result.stderr}',
-          });
-        }
       }
+
+      // Include only user/application prints from the test run.
+      _appendTextChunks(content, title: 'PRINTS', text: result.prints);
 
       _sendResult(id, {
         'content': content,

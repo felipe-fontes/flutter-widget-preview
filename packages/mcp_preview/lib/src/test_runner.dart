@@ -12,6 +12,7 @@ class TestRunResult {
   final bool success;
   final String? error;
   final Duration duration;
+  final String prints;
   final String stdout;
   final String stderr;
 
@@ -21,6 +22,7 @@ class TestRunResult {
     required this.success,
     this.error,
     required this.duration,
+    this.prints = '',
     this.stdout = '',
     this.stderr = '',
   });
@@ -101,6 +103,24 @@ class TestRunner {
         }
         dir = dir.parent;
       }
+    }
+
+    // Fallback: when running under `dart test`, Platform.script often points to
+    // the test runner in `.dart_tool/`, so also try resolving from cwd.
+    try {
+      var dir = Directory.current;
+      while (dir.path != dir.parent.path) {
+        final pubspecPath = p.join(dir.path, 'pubspec.yaml');
+        if (File(pubspecPath).existsSync()) {
+          final pubspec = File(pubspecPath).readAsStringSync();
+          if (pubspec.contains('name: mcp_preview')) {
+            return dir.path;
+          }
+        }
+        dir = dir.parent;
+      }
+    } catch (_) {
+      // Ignore and return null below.
     }
     return null;
   }
@@ -185,6 +205,7 @@ class TestRunner {
       // Build flutter test command
       final args = [
         'test',
+        '--machine',
         testFilePath,
         ...dartDefines,
       ];
@@ -200,9 +221,30 @@ class TestRunner {
         workingDirectory: projectRoot,
       );
 
-      // Capture stdout/stderr for debugging
+      // Capture stdout/stderr for debugging (bounded)
+      const maxRawChars = 200000;
       final stdoutBuffer = StringBuffer();
       final stderrBuffer = StringBuffer();
+      final printsBuffer = StringBuffer();
+      var stdoutTruncated = false;
+      var stderrTruncated = false;
+
+      void appendBounded(StringBuffer buffer, String line,
+          {required bool truncatedFlag, required void Function() onTruncate}) {
+        if (buffer.length < maxRawChars) {
+          buffer.writeln(line);
+          return;
+        }
+        if (!truncatedFlag) {
+          onTruncate();
+        }
+      }
+
+      bool isInternalPreviewLine(String message) {
+        return message.startsWith('PREVIEW_') ||
+            message.contains('GRPC_SERVER_STARTED:');
+      }
+
       PreviewGrpcClient? grpcClient;
       StreamSubscription<Frame>? frameSubscription;
 
@@ -213,15 +255,42 @@ class TestRunner {
       // Completer to signal when drain is complete (test finished)
       final drainCompleteCompleter = Completer<void>();
 
-      // Parse stdout for gRPC port and status messages
+      int? exitCode;
+      // Capture exit code when available.
+      unawaited(process.exitCode.then((code) {
+        exitCode = code;
+      }));
+
+      // Parse stdout (machine JSON) for print events, gRPC port, and status.
       process.stdout
           .transform(const SystemEncoding().decoder)
           .transform(const LineSplitter())
           .listen((line) {
-        stdoutBuffer.writeln(line);
+        appendBounded(stdoutBuffer, line, truncatedFlag: stdoutTruncated,
+            onTruncate: () {
+          stdoutTruncated = true;
+          stdoutBuffer.writeln('... (stdout truncated)');
+        });
+
+        String? message;
+        try {
+          final decoded = jsonDecode(line);
+          if (decoded is Map<String, dynamic> && decoded['type'] == 'print') {
+            final m = decoded['message'];
+            if (m is String) {
+              message = m;
+            }
+          }
+        } catch (_) {
+          // If it's not JSON, treat it as a plain line.
+          message = line;
+        }
+
+        if (message == null || message.isEmpty) return;
 
         // Look for GRPC_SERVER_STARTED:<port>
-        final grpcMatch = RegExp(r'GRPC_SERVER_STARTED:(\d+)').firstMatch(line);
+        final grpcMatch =
+            RegExp(r'GRPC_SERVER_STARTED:(\d+)').firstMatch(message);
         if (grpcMatch != null && !grpcConnected) {
           grpcConnected = true;
           final port = int.parse(grpcMatch.group(1)!);
@@ -241,9 +310,14 @@ class TestRunner {
         }
 
         // Look for PREVIEW_DRAIN_COMPLETE - test is done
-        if (line.contains('PREVIEW_DRAIN_COMPLETE') &&
+        if (message.contains('PREVIEW_DRAIN_COMPLETE') &&
             !drainCompleteCompleter.isCompleted) {
           drainCompleteCompleter.complete();
+        }
+
+        // Capture only user/application prints (exclude internal markers).
+        if (!isInternalPreviewLine(message)) {
+          printsBuffer.writeln(message);
         }
       });
 
@@ -251,7 +325,11 @@ class TestRunner {
           .transform(const SystemEncoding().decoder)
           .transform(const LineSplitter())
           .listen((line) {
-        stderrBuffer.writeln(line);
+        appendBounded(stderrBuffer, line, truncatedFlag: stderrTruncated,
+            onTruncate: () {
+          stderrTruncated = true;
+          stderrBuffer.writeln('... (stderr truncated)');
+        });
       });
 
       try {
@@ -284,21 +362,38 @@ class TestRunner {
         await frameSubscription?.cancel();
         await grpcClient?.disconnect();
 
+        // Give the test process a moment to exit cleanly.
+        if (exitCode == null) {
+          try {
+            exitCode =
+                await process.exitCode.timeout(const Duration(seconds: 3));
+          } catch (_) {
+            // Still running.
+          }
+        }
+
         // Kill the process if it's still running
-        process.kill();
+        if (exitCode == null) {
+          process.kill();
+          try {
+            exitCode =
+                await process.exitCode.timeout(const Duration(seconds: 2));
+          } catch (_) {
+            // Ignore.
+          }
+        }
       }
 
       stopwatch.stop();
 
-      // Check if test passed (look for test success in output)
-      final success = stdoutBuffer.toString().contains('+1:') ||
-          stdoutBuffer.toString().contains('All tests passed');
+      final success = exitCode == 0;
 
       return TestRunResult(
         frames: frames,
         testName: testName ?? p.basename(testFilePath),
         success: success,
         duration: stopwatch.elapsed,
+        prints: printsBuffer.toString(),
         stdout: stdoutBuffer.toString(),
         stderr: stderrBuffer.toString(),
       );
