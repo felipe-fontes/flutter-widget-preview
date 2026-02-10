@@ -59,7 +59,10 @@ Run a Flutter widget test and capture rendered frames.
 Get a specific frame from the last test run as a PNG image.
 
 **Parameters:**
-- `index`: Frame index (0-based integer), or `"first"`/`"last"` (also accepts `-1` for last)
+- `index`: Frame index selector:
+  - JSON integer: 0-based (e.g. `0` is the first frame)
+  - `"first"`/`"last"` (also accepts `-1` for last)
+  - Numeric string: accepted for compatibility (e.g. `"1"`, `"10"`), treated as 1-based (`"1"` = first frame)
 
 **Returns:**
 - PNG image of the requested frame

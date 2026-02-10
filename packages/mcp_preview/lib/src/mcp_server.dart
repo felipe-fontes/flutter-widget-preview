@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:preview_core/preview_core.dart';
 
 import 'image_converter.dart';
+import 'index_selectors.dart';
 import 'test_runner.dart';
 
 /// MCP Server for Flutter widget test preview
@@ -12,7 +13,7 @@ import 'test_runner.dart';
 /// Implements the Model Context Protocol (JSON-RPC 2.0 over stdio)
 /// to expose Flutter widget rendering capabilities to AI assistants.
 ///
-/// Tools provided:
+                    'pattern': r'^-?\d+$'
 /// - `run_widget_test`: Run a widget test and capture frames
 /// - `get_frame`: Get a specific frame as PNG image
 /// - `list_frames`: List all captured frames with metadata
@@ -187,8 +188,15 @@ The image is returned as base64-encoded PNG data.''',
                     'type': 'string',
                     'enum': ['first', 'last']
                   },
+                  {
+                    // Compatibility: many LLM clients send numeric indices as JSON strings.
+                    // This accepts values like "1" or "10".
+                    'type': 'string',
+                    'pattern': '^-?\\d+\$'
+                  },
                 ],
-                'description': 'Frame index (0-based), or "first"/"last"',
+                'description':
+                    'Frame index: integer (0-based), "first"/"last", or numeric string like "1"/"10" (1-based compatibility)',
               },
             },
             'required': ['index'],
@@ -403,31 +411,17 @@ ${result.frames.isEmpty ? 'No frames were captured. Make sure the test calls pum
     }
 
     final indexArg = args['index'];
-    int index;
+    final parsed = parseGetFrameIndexSelector(
+      indexArg,
+      frameCount: _cachedFrames.length,
+    );
 
-    if (indexArg is String) {
-      switch (indexArg) {
-        case 'first':
-          index = 0;
-          break;
-        case 'last':
-          index = _cachedFrames.length - 1;
-          break;
-        default:
-          _sendError(id, -32602,
-              'Invalid index: $indexArg. Use integer, "first", or "last".');
-          return;
-      }
-    } else if (indexArg is int) {
-      if (indexArg == -1) {
-        index = _cachedFrames.length - 1;
-      } else {
-        index = indexArg;
-      }
-    } else {
-      _sendError(id, -32602, 'Invalid index type');
+    if (parsed.error != null) {
+      _sendError(id, -32602, parsed.error!);
       return;
     }
+
+    final index = parsed.index!;
 
     if (index < 0 || index >= _cachedFrames.length) {
       _sendResult(id, {
