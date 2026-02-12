@@ -2,7 +2,7 @@
   "name": "flutter-widget-preview",
   "displayName": "Flutter Widget Test Preview",
   "description": "Real-time visual testing for Flutter — see your widgets render live during tests. Includes MCP tools for AI-powered widget development.",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "publisher": "FelipeFontes",
   "icon": "media/icon.png",
   "galleryBanner": {
