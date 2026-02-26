@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:clock/clock.dart';
@@ -72,6 +73,7 @@ class PreviewTestBinding extends TestWidgetsFlutterBinding
   bool _fontsLoaded = false;
   Completer<void>? _fontsCompleter;
   int _framesSent = 0;
+  int? _lastFrameHash;
 
   /// Completer that resolves when the process should exit.
   /// Used to keep the process alive until frames are delivered.
@@ -232,6 +234,7 @@ class PreviewTestBinding extends TestWidgetsFlutterBinding
     try {
       final width = physicalSize.width.toInt();
       final height = physicalSize.height.toInt();
+      if (width <= 0 || height <= 0) return;
 
       final image = scene.toImageSync(width, height);
       final byteData =
@@ -239,11 +242,22 @@ class PreviewTestBinding extends TestWidgetsFlutterBinding
       image.dispose();
 
       if (byteData == null) return;
+      final rgbaData = byteData.buffer.asUint8List();
+      if (rgbaData.isEmpty) return;
+
+      if (_isDuplicateFrame(
+        rgbaData,
+        width: width,
+        height: height,
+        devicePixelRatio: devicePixelRatio,
+      )) {
+        return;
+      }
 
       final frame = Frame()
         ..width = width
         ..height = height
-        ..rgbaData = byteData.buffer.asUint8List()
+        ..rgbaData = rgbaData
         ..devicePixelRatio = devicePixelRatio
         ..timestampMs = Int64(DateTime.now().millisecondsSinceEpoch)
         ..testName = _currentTestName ?? '';
@@ -258,7 +272,63 @@ class PreviewTestBinding extends TestWidgetsFlutterBinding
 
   void setTestName(String name) {
     _currentTestName = name;
+    _lastFrameHash = null;
     _grpcServer.setTestName(name);
+  }
+
+  bool _isDuplicateFrame(
+    Uint8List rgbaData, {
+    required int width,
+    required int height,
+    required double devicePixelRatio,
+  }) {
+    final frameHash = _computeFrameHash(
+      rgbaData,
+      width: width,
+      height: height,
+      devicePixelRatio: devicePixelRatio,
+    );
+
+    if (_lastFrameHash == frameHash) {
+      return true;
+    }
+
+    _lastFrameHash = frameHash;
+    return false;
+  }
+
+  int _computeFrameHash(
+    Uint8List rgbaData, {
+    required int width,
+    required int height,
+    required double devicePixelRatio,
+  }) {
+    var hash = 0xcbf29ce484222325;
+    hash = _fnv1aInt(hash, width);
+    hash = _fnv1aInt(hash, height);
+    hash = _fnv1aInt(hash, (devicePixelRatio * 1000).round());
+    hash = _fnv1aInt(hash, rgbaData.lengthInBytes);
+
+    for (final byte in rgbaData) {
+      hash = _fnv1aStep(hash, byte);
+    }
+
+    return hash;
+  }
+
+  int _fnv1aInt(int hash, int value) {
+    var current = value;
+    for (var i = 0; i < 8; i++) {
+      hash = _fnv1aStep(hash, current & 0xff);
+      current = current >> 8;
+    }
+    return hash;
+  }
+
+  int _fnv1aStep(int hash, int value) {
+    const prime = 0x100000001b3;
+    const mask64 = 0xFFFFFFFFFFFFFFFF;
+    return ((hash ^ value) * prime) & mask64;
   }
 
   @override
@@ -304,16 +374,32 @@ class PreviewTestBinding extends TestWidgetsFlutterBinding
     double devicePixelRatio,
   ) async {
     try {
+      if (image.width <= 0 || image.height <= 0) {
+        image.dispose();
+        return;
+      }
+
       final byteData =
           await image.toByteData(format: ui.ImageByteFormat.rawRgba);
       image.dispose();
 
       if (byteData == null) return;
+      final rgbaData = byteData.buffer.asUint8List();
+      if (rgbaData.isEmpty) return;
+
+      if (_isDuplicateFrame(
+        rgbaData,
+        width: image.width,
+        height: image.height,
+        devicePixelRatio: devicePixelRatio,
+      )) {
+        return;
+      }
 
       final frame = Frame()
         ..width = image.width
         ..height = image.height
-        ..rgbaData = byteData.buffer.asUint8List()
+        ..rgbaData = rgbaData
         ..devicePixelRatio = devicePixelRatio
         ..timestampMs = Int64(DateTime.now().millisecondsSinceEpoch)
         ..testName = _currentTestName ?? '';
@@ -481,8 +567,7 @@ class PreviewTestBinding extends TestWidgetsFlutterBinding
   }) {
     assert(!inTest);
     _inTest = true;
-    _currentTestName = description;
-    _grpcServer.setTestName(description);
+    setTestName(description);
     return _runTest(testBody, invariantTester, description);
   }
 
