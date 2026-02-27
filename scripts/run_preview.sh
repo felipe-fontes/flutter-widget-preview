@@ -255,7 +255,7 @@ fi
 # tail -f streams everything to the terminal in real-time.
 # We poll the log file for the gRPC port separately.
 # ---------------------------------------------------------------------------
-TEST_LOG=$(mktemp "${TMPDIR:-/tmp}/preview_test.XXXXXX.log")
+TEST_LOG=$(mktemp "${TMPDIR:-/tmp}/preview_test.XXXXXX")
 
 # Start the test process, all output goes to the log file
 (cd "$PROJECT_PATH" && flutter "${FLUTTER_ARGS[@]}" > "$TEST_LOG" 2>&1) &
@@ -309,7 +309,7 @@ kill_port "$WEB_PORT"
 
 echo "Starting viewer (gRPC port: $GRPC_PORT, web port: $WEB_PORT)..."
 
-VIEWER_LOG=$(mktemp "${TMPDIR:-/tmp}/preview_viewer.XXXXXX.log")
+VIEWER_LOG=$(mktemp "${TMPDIR:-/tmp}/preview_viewer.XXXXXX")
 
 (cd "$VIEWER_PACKAGE_DIR" && dart run bin/preview_viewer.dart \
     --grpc-port "$GRPC_PORT" \

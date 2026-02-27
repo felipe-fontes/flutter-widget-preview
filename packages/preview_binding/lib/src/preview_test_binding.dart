@@ -336,9 +336,13 @@ class PreviewTestBinding extends TestWidgetsFlutterBinding
     if (framePolicy == LiveTestWidgetsFlutterBindingFramePolicy.benchmark) {
       return;
     }
-    // Don't capture on every frame - only capture when pump() is called
-    // This prevents excessive frame capture at 60fps
-    super.scheduleFrame();
+    // Only schedule frames when explicitly requested by pump() or reassemble,
+    // or when not in a test. This prevents animations (cursor blink, etc.)
+    // from continuously scheduling frames which would cause pumpAndSettle()
+    // to hang indefinitely in the live binding.
+    if (!_inTest || _allowFrameScheduling || _expectingFrameToReassemble) {
+      super.scheduleFrame();
+    }
   }
 
   void _captureCurrentFrame() {
@@ -441,6 +445,7 @@ class PreviewTestBinding extends TestWidgetsFlutterBinding
   Completer<void>? _pendingFrame;
   bool _expectingFrame = false;
   bool _expectingFrameToReassemble = false;
+  bool _allowFrameScheduling = false;
   bool _viewNeedsPaint = false;
   bool _runningAsyncTasks = false;
   bool? _doDrawThisFrame;
@@ -455,7 +460,9 @@ class PreviewTestBinding extends TestWidgetsFlutterBinding
     if (framePolicy == LiveTestWidgetsFlutterBindingFramePolicy.benchmark) {
       return;
     }
-    super.scheduleForcedFrame();
+    if (!_inTest || _allowFrameScheduling || _expectingFrameToReassemble) {
+      super.scheduleForcedFrame();
+    }
   }
 
   @override
@@ -519,11 +526,15 @@ class PreviewTestBinding extends TestWidgetsFlutterBinding
       if (duration != null) {
         Timer(duration, () {
           _expectingFrame = true;
+          _allowFrameScheduling = true;
           scheduleFrame();
+          _allowFrameScheduling = false;
         });
       } else {
         _expectingFrame = true;
+        _allowFrameScheduling = true;
         scheduleFrame();
+        _allowFrameScheduling = false;
       }
       _pendingFrame = Completer<void>();
       return _pendingFrame!.future;
