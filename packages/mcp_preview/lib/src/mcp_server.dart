@@ -13,7 +13,6 @@ import 'test_runner.dart';
 /// Implements the Model Context Protocol (JSON-RPC 2.0 over stdio)
 /// to expose Flutter widget rendering capabilities to AI assistants.
 ///
-                    'pattern': r'^-?\d+$'
 /// - `run_widget_test`: Run a widget test and capture frames
 /// - `get_frame`: Get a specific frame as PNG image
 /// - `list_frames`: List all captured frames with metadata
